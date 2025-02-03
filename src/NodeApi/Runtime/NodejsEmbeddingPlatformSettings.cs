@@ -5,12 +5,12 @@ namespace Microsoft.JavaScript.NodeApi.Runtime;
 
 using static JSRuntime;
 using static NodejsEmbedding;
+using static NodejsRuntime;
 
 public class NodejsEmbeddingPlatformSettings
 {
-    public node_embedding_platform_flags? PlatformFlags { get; set; }
+    public NodeEmbeddingPlatformFlags? PlatformFlags { get; set; }
     public string[]? Args { get; set; }
-    public HandleErrorCallback? OnError { get; set; }
     public ConfigurePlatformCallback? ConfigurePlatform { get; set; }
 
     public static JSRuntime JSRuntime => NodejsEmbedding.JSRuntime;

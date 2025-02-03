@@ -540,7 +540,7 @@ public abstract partial class JSRuntime
     public virtual NodeEmbeddingStatus
         EmbeddingDeletePlatform(node_embedding_platform platform) => throw NS();
 
-    public virtual NodeEmbeddingStatus EmbeddingPlatformSetFlags(
+    public virtual NodeEmbeddingStatus EmbeddingPlatformConfigSetFlags(
         node_embedding_platform_config platform_config,
         NodeEmbeddingPlatformFlags flags) => throw NS();
 
@@ -565,34 +565,38 @@ public abstract partial class JSRuntime
     public virtual NodeEmbeddingStatus
         EmbeddingDeleteRuntime(node_embedding_runtime runtime) => throw NS();
 
-    public virtual NodeEmbeddingStatus EmbeddingRuntimeSetFlags(
+    public virtual NodeEmbeddingStatus EmbeddingRuntimeConfigSetNodeApiVersion(
+        node_embedding_runtime_config runtime_config,
+        int node_api_version) => throw NS();
+
+    public virtual NodeEmbeddingStatus EmbeddingRuntimeConfigSetFlags(
         node_embedding_runtime_config runtime_config,
         NodeEmbeddingRuntimeFlags flags) => throw NS();
 
-    public virtual NodeEmbeddingStatus EmbeddingRuntimeSetArgs(
+    public virtual NodeEmbeddingStatus EmbeddingRuntimeConfigSetArgs(
         node_embedding_runtime_config runtime_config,
         ReadOnlySpan<string> args,
         ReadOnlySpan<string> runtime_args) => throw NS();
 
-    public virtual NodeEmbeddingStatus EmbeddingRuntimeOnPreload(
+    public virtual NodeEmbeddingStatus EmbeddingRuntimeConfigOnPreload(
         node_embedding_runtime_config runtime_config,
         node_embedding_runtime_preload_callback preload,
         nint preload_data,
         node_embedding_data_release_callback release_preload_data) => throw NS();
 
-    public virtual NodeEmbeddingStatus EmbeddingRuntimeOnLoading(
+    public virtual NodeEmbeddingStatus EmbeddingRuntimeConfigOnLoading(
         node_embedding_runtime_config runtime_config,
         node_embedding_runtime_loading_callback run_load,
         nint load_data,
         node_embedding_data_release_callback release_load_data) => throw NS();
 
-    public virtual NodeEmbeddingStatus EmbeddingRuntimeOnLoaded(
+    public virtual NodeEmbeddingStatus EmbeddingRuntimeConfigOnLoaded(
         node_embedding_runtime_config runtime_config,
         node_embedding_runtime_loaded_callback handle_loaded,
         nint handle_loaded_data,
         node_embedding_data_release_callback release_handle_loaded_data) => throw NS();
 
-    public virtual NodeEmbeddingStatus EmbeddingRuntimeAddModule(
+    public virtual NodeEmbeddingStatus EmbeddingRuntimeConfigAddModule(
         node_embedding_runtime_config runtime_config,
         ReadOnlySpan<char> module_name,
         node_embedding_module_initialize_callback init_module,
@@ -609,7 +613,7 @@ public abstract partial class JSRuntime
         node_embedding_runtime runtime,
         out nint user_data) => throw NS();
 
-    public virtual NodeEmbeddingStatus EmbeddingRuntimeSetTaskRunner(
+    public virtual NodeEmbeddingStatus EmbeddingRuntimeConfigSetTaskRunner(
         node_embedding_runtime_config runtime_config,
         node_embedding_task_post_callback post_task,
         nint post_task_data,

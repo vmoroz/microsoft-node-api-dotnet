@@ -60,29 +60,29 @@ public static class NodeApiStatusExtensions
         return value;
     }
 
-    [StackTraceHidden]
-    public static void ThrowIfFailed([DoesNotReturnIf(true)] this node_embedding_status status,
-                                     [CallerMemberName] string memberName = "",
-                                     [CallerFilePath] string sourceFilePath = "",
-                                     [CallerLineNumber] int sourceLineNumber = 0)
-    {
-        if (status == node_embedding_status.ok)
-            return;
+    //[StackTraceHidden]
+    //public static void ThrowIfFailed([DoesNotReturnIf(true)] this node_embedding_status status,
+    //                                 [CallerMemberName] string memberName = "",
+    //                                 [CallerFilePath] string sourceFilePath = "",
+    //                                 [CallerLineNumber] int sourceLineNumber = 0)
+    //{
+    //    if (status == node_embedding_status.ok)
+    //        return;
 
-        throw new JSException($"Error in {memberName} at {sourceFilePath}:{sourceLineNumber}");
-    }
+    //    throw new JSException($"Error in {memberName} at {sourceFilePath}:{sourceLineNumber}");
+    //}
 
-    // Throw if status is not napi_ok. Otherwise, return the provided value.
-    // This function helps writing compact wrappers for the interop calls.
-    [StackTraceHidden]
-    public static T ThrowIfFailed<T>(this node_embedding_status status,
-                                     T value,
-                                     [CallerMemberName] string memberName = "",
-                                     [CallerFilePath] string sourceFilePath = "",
-                                     [CallerLineNumber] int sourceLineNumber = 0)
-    {
-        status.ThrowIfFailed(memberName, sourceFilePath, sourceLineNumber);
-        return value;
-    }
+    //// Throw if status is not napi_ok. Otherwise, return the provided value.
+    //// This function helps writing compact wrappers for the interop calls.
+    //[StackTraceHidden]
+    //public static T ThrowIfFailed<T>(this node_embedding_status status,
+    //                                 T value,
+    //                                 [CallerMemberName] string memberName = "",
+    //                                 [CallerFilePath] string sourceFilePath = "",
+    //                                 [CallerLineNumber] int sourceLineNumber = 0)
+    //{
+    //    status.ThrowIfFailed(memberName, sourceFilePath, sourceLineNumber);
+    //    return value;
+    //}
 }
 

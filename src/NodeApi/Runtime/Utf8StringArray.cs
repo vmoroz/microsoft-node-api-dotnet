@@ -1,4 +1,6 @@
 using System;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -63,7 +65,9 @@ internal struct Utf8StringArray : IDisposable
 
     public bool Disposed { get; private set; }
 
-    public readonly ref nint Pin()
+    // To support the use within a fixed statement.
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public ref nint GetPinnableReference()
     {
         if (Disposed) throw new ObjectDisposedException(nameof(Utf8StringArray));
         Span<nint> span = Utf8Strings;
