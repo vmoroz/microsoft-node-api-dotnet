@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 #endif
 using System.Runtime.InteropServices;
 using static JSRuntime;
+using static NodejsRuntime;
 
 /// <summary>
 /// Shared code for the Node.js embedding classes.
@@ -44,10 +45,8 @@ public sealed class NodejsEmbedding
         s_jsRuntime = new NodejsRuntime(libnodeHandle);
     }
 
-    public delegate node_embedding_status HandleErrorCallback(
-        string[] messages, node_embedding_status status);
     public delegate void ConfigurePlatformCallback(
-        node_embedding_platform_config platformConfig);
+        node_embedding_platform_config platformConfig, nint platformConfigData);
     public delegate void ConfigureRuntimeCallback(
         node_embedding_platform platform, node_embedding_runtime_config platformConfig);
     public delegate void GetArgsCallback(string[] args);

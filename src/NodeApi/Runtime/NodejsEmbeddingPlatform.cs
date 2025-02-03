@@ -5,8 +5,8 @@ namespace Microsoft.JavaScript.NodeApi.Runtime;
 
 using System;
 using System.Runtime.InteropServices;
-using static JSRuntime;
 using static NodejsEmbedding;
+using static NodejsRuntime;
 
 /// <summary>
 /// Manages a Node.js platform instance, provided by `libnode`.
