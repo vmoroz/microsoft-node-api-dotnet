@@ -25,7 +25,7 @@ public class NodejsEmbeddingTests
     private static string LibnodePath { get; } = GetLibnodePath();
 
     // The Node.js platform may only be initialized once per process.
-    internal static NodejsEmbeddingPlatform? NodejsPlatform { get; } =
+    internal static NodeEmbeddingPlatform? NodejsPlatform { get; } =
         File.Exists(LibnodePath)
             ? new(LibnodePath, new NodejsEmbeddingPlatformSettings
             {

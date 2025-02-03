@@ -86,7 +86,7 @@ public abstract class Benchmarks
     /// </summary>
     protected void Setup()
     {
-        NodejsEmbeddingPlatform platform = new(
+        NodeEmbeddingPlatform platform = new(
             LibnodePath,
             new NodejsEmbeddingPlatformSettings { Args = s_settings });
 

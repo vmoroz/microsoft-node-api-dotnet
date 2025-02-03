@@ -4,7 +4,9 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using Microsoft.JavaScript.NodeApi.Runtime;
 using static Microsoft.JavaScript.NodeApi.Runtime.JSRuntime;
+using static Microsoft.JavaScript.NodeApi.Runtime.NodejsRuntime;
 
 namespace Microsoft.JavaScript.NodeApi;
 
@@ -60,17 +62,17 @@ public static class NodeApiStatusExtensions
         return value;
     }
 
-    //[StackTraceHidden]
-    //public static void ThrowIfFailed([DoesNotReturnIf(true)] this node_embedding_status status,
-    //                                 [CallerMemberName] string memberName = "",
-    //                                 [CallerFilePath] string sourceFilePath = "",
-    //                                 [CallerLineNumber] int sourceLineNumber = 0)
-    //{
-    //    if (status == node_embedding_status.ok)
-    //        return;
-
-    //    throw new JSException($"Error in {memberName} at {sourceFilePath}:{sourceLineNumber}");
-    //}
+    [StackTraceHidden]
+    public static void ThrowIfFailed([DoesNotReturnIf(true)] this NodeEmbeddingStatus status,
+                                     [CallerMemberName] string memberName = "",
+                                     [CallerFilePath] string sourceFilePath = "",
+                                     [CallerLineNumber] int sourceLineNumber = 0)
+    {
+        if (status == NodeEmbeddingStatus.OK)
+            return;
+        // TODO: Get last error message
+        throw new JSException($"Error in {memberName} at {sourceFilePath}:{sourceLineNumber}");
+    }
 
     //// Throw if status is not napi_ok. Otherwise, return the provided value.
     //// This function helps writing compact wrappers for the interop calls.

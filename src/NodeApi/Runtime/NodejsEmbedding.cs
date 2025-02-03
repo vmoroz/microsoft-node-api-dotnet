@@ -45,8 +45,7 @@ public sealed class NodejsEmbedding
         s_jsRuntime = new NodejsRuntime(libnodeHandle);
     }
 
-    public delegate void ConfigurePlatformCallback(
-        node_embedding_platform_config platformConfig, nint platformConfigData);
+    public delegate void ConfigurePlatformCallback(NodeEmbeddingPlatformConfig platformConfig);
     public delegate void ConfigureRuntimeCallback(
         node_embedding_platform platform, node_embedding_runtime_config platformConfig);
     public delegate void GetArgsCallback(string[] args);
@@ -66,16 +65,16 @@ public sealed class NodejsEmbedding
     internal static readonly unsafe delegate* unmanaged[Cdecl]<nint, void>
     s_releaseDataCallback = &ReleaseDataCallbackAdapter;
     internal static readonly unsafe delegate* unmanaged[Cdecl]<
-        nint, nint, nuint, node_embedding_status, node_embedding_status>
+        nint, nint, nuint, NodeEmbeddingStatus, NodeEmbeddingStatus>
         s_handleErrorCallback = &HandleErrorCallbackAdapter;
     internal static readonly unsafe delegate* unmanaged[Cdecl]<
-        nint, node_embedding_platform_config, node_embedding_status>
+        nint, node_embedding_platform_config, NodeEmbeddingStatus>
         s_configurePlatformCallback = &ConfigurePlatformCallbackAdapter;
     internal static readonly unsafe delegate* unmanaged[Cdecl]<
         nint,
         node_embedding_platform,
         node_embedding_runtime_config,
-        node_embedding_status>
+        NodeEmbeddingStatus>
         s_configureRuntimeCallback = &ConfigureRuntimeCallbackAdapter;
     internal static readonly unsafe delegate* unmanaged[Cdecl]<
         nint, int, nint, void>
@@ -105,7 +104,7 @@ public sealed class NodejsEmbedding
         s_releaseDataCallback = ReleaseDataCallbackAdapter;
     internal static readonly node_embedding_handle_error_callback.Delegate
         s_handleErrorCallback = HandleErrorCallbackAdapter;
-    internal static readonly node_embedding_configure_platform_callback.Delegate
+    internal static readonly node_embedding_platform_configure_callback.Delegate
         s_configurePlatformCallback = ConfigurePlatformCallbackAdapter;
     internal static readonly node_embedding_configure_runtime_callback.Delegate
         s_configureRuntimeCallback = ConfigureRuntimeCallbackAdapter;
@@ -142,11 +141,11 @@ public sealed class NodejsEmbedding
 #if UNMANAGED_DELEGATES
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
 #endif
-    internal static unsafe node_embedding_status HandleErrorCallbackAdapter(
+    internal static unsafe NodeEmbeddingStatus HandleErrorCallbackAdapter(
         nint cb_data,
         nint messages,
         nuint messages_size,
-        node_embedding_status status)
+        NodeEmbeddingStatus status)
     {
         try
         {
@@ -155,33 +154,34 @@ public sealed class NodejsEmbedding
         }
         catch (Exception)
         {
-            return node_embedding_status.generic_error;
+            return NodeEmbeddingStatus.generic_error;
         }
     }
 
 #if UNMANAGED_DELEGATES
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
 #endif
-    internal static unsafe node_embedding_status ConfigurePlatformCallbackAdapter(
+    internal static unsafe NodeEmbeddingStatus ConfigurePlatformCallbackAdapter(
         nint cb_data,
         node_embedding_platform_config platform_config)
     {
         try
         {
             var callback = (ConfigurePlatformCallback)GCHandle.FromIntPtr(cb_data).Target!;
-            callback(platform_config);
-            return node_embedding_status.ok;
+            callback(new NodeEmbeddingPlatformConfig(platform_config));
+            return NodeEmbeddingStatus.OK;
         }
         catch (Exception)
         {
-            return node_embedding_status.generic_error;
+            // TODO: set last error.
+            return NodeEmbeddingStatus.GenericError;
         }
     }
 
 #if UNMANAGED_DELEGATES
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
 #endif
-    internal static unsafe node_embedding_status ConfigureRuntimeCallbackAdapter(
+    internal static unsafe NodeEmbeddingStatus ConfigureRuntimeCallbackAdapter(
         nint cb_data,
         node_embedding_platform platform,
         node_embedding_runtime_config runtime_config)
@@ -190,11 +190,11 @@ public sealed class NodejsEmbedding
         {
             var callback = (ConfigureRuntimeCallback)GCHandle.FromIntPtr(cb_data).Target!;
             callback(platform, runtime_config);
-            return node_embedding_status.ok;
+            return NodeEmbeddingStatus.ok;
         }
         catch (Exception)
         {
-            return node_embedding_status.generic_error;
+            return NodeEmbeddingStatus.generic_error;
         }
     }
 
