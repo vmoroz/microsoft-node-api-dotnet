@@ -62,26 +62,20 @@ public sealed class NodeEmbedding
         node_embedding_task_run_callback runTask,
         nint taskData,
         node_embedding_data_release_callback releaseTaskData);
-    public delegate void RunNodeApiCallback(NodeEmbeddingRuntime runtime);
+    public delegate void RunNodeApiCallback();
 
 #if UNMANAGED_DELEGATES
     internal static readonly unsafe delegate* unmanaged[Cdecl]<nint, NodeEmbeddingStatus>
-    s_releaseDataCallback = &ReleaseDataCallbackAdapter;
-    internal static readonly unsafe delegate* unmanaged[Cdecl]<
-        nint, nint, nuint, NodeEmbeddingStatus, NodeEmbeddingStatus>
-        s_handleErrorCallback = &HandleErrorCallbackAdapter;
+        s_releaseDataCallback = &ReleaseDataCallbackAdapter;
     internal static readonly unsafe delegate* unmanaged[Cdecl]<
         nint, node_embedding_platform_config, NodeEmbeddingStatus>
-        s_configurePlatformCallback = &ConfigurePlatformCallbackAdapter;
+        s_platformConfigureCallback = &PlatformConfigureCallbackAdapter;
     internal static readonly unsafe delegate* unmanaged[Cdecl]<
         nint,
         node_embedding_platform,
         node_embedding_runtime_config,
         NodeEmbeddingStatus>
-        s_configureRuntimeCallback = &ConfigureRuntimeCallbackAdapter;
-    internal static readonly unsafe delegate* unmanaged[Cdecl]<
-        nint, int, nint, void>
-        s_getArgsCallback = &GetArgsCallbackAdapter;
+        s_runtimeConfigureCallback = &RuntimeConfigureCallbackAdapter;
     internal static readonly unsafe delegate* unmanaged[Cdecl]<
         nint, node_embedding_runtime, napi_env, napi_value, napi_value, void>
         s_runtimePreloadCallback = &RuntimePreloadCallbackAdapter;
@@ -105,17 +99,15 @@ public sealed class NodeEmbedding
         NodeEmbeddingStatus>
         s_taskPostCallback = &TaskPostCallbackAdapter;
     internal static readonly unsafe delegate* unmanaged[Cdecl]<
-        nint, node_embedding_runtime, napi_env, void>
-        s_runNodeApiCallback = &RunNodeApiCallbackAdapter;
+        nint, napi_env, void>
+        s_nodeApiRunCallback = &NodeApiRunCallbackAdapter;
 #else
     internal static readonly node_embedding_data_release_callback.Delegate
         s_releaseDataCallback = ReleaseDataCallbackAdapter;
     internal static readonly node_embedding_platform_configure_callback.Delegate
-        s_configurePlatformCallback = ConfigurePlatformCallbackAdapter;
-    internal static readonly node_embedding_configure_runtime_callback.Delegate
-        s_configureRuntimeCallback = ConfigureRuntimeCallbackAdapter;
-    internal static readonly node_embedding_get_args_callback.Delegate
-        s_getArgsCallback = GetArgsCallbackAdapter;
+        s_platformConfigureCallback = PlatformConfigureCallbackAdapter;
+    internal static readonly node_embedding_runtime_configure_callback.Delegate
+        s_runtimeConfigureCallback = RuntimeConfigureCallbackAdapter;
     internal static readonly node_embedding_runtime_preload_callback.Delegate
         s_runtimePreloadCallback = RuntimePreloadCallbackAdapter;
     internal static readonly node_embedding_runtime_loading_callback.Delegate
@@ -128,8 +120,8 @@ public sealed class NodeEmbedding
         s_taskRunCallback = TaskRunCallbackAdapter;
     internal static readonly node_embedding_task_post_callback.Delegate
         s_taskPostCallback = TaskPostCallbackAdapter;
-    internal static readonly node_embedding_run_node_api_callback.Delegate
-        s_runNodeApiCallback = RunNodeApiCallbackAdapter;
+    internal static readonly node_embedding_node_api_run_callback.Delegate
+        s_nodeApiRunCallback = NodeApiRunCallbackAdapter;
 #endif
 
 #if UNMANAGED_DELEGATES
@@ -148,27 +140,7 @@ public sealed class NodeEmbedding
 #if UNMANAGED_DELEGATES
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
 #endif
-    internal static unsafe NodeEmbeddingStatus HandleErrorCallbackAdapter(
-        nint cb_data,
-        nint messages,
-        nuint messages_size,
-        NodeEmbeddingStatus status)
-    {
-        try
-        {
-            var callback = (HandleErrorCallback)GCHandle.FromIntPtr(cb_data).Target!;
-            return callback(Utf8StringArray.ToStringArray(messages, (int)messages_size), status);
-        }
-        catch (Exception)
-        {
-            return NodeEmbeddingStatus.generic_error;
-        }
-    }
-
-#if UNMANAGED_DELEGATES
-    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
-#endif
-    internal static unsafe NodeEmbeddingStatus ConfigurePlatformCallbackAdapter(
+    internal static unsafe NodeEmbeddingStatus PlatformConfigureCallbackAdapter(
         nint cb_data,
         node_embedding_platform_config platform_config)
     {
@@ -188,7 +160,7 @@ public sealed class NodeEmbedding
 #if UNMANAGED_DELEGATES
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
 #endif
-    internal static unsafe NodeEmbeddingStatus ConfigureRuntimeCallbackAdapter(
+    internal static unsafe NodeEmbeddingStatus RuntimeConfigureCallbackAdapter(
         nint cb_data,
         node_embedding_platform platform,
         node_embedding_runtime_config runtime_config)
@@ -197,11 +169,12 @@ public sealed class NodeEmbedding
         {
             var callback = (ConfigureRuntimeCallback)GCHandle.FromIntPtr(cb_data).Target!;
             callback(platform, runtime_config);
-            return NodeEmbeddingStatus.ok;
+            return NodeEmbeddingStatus.OK;
         }
         catch (Exception)
         {
-            return NodeEmbeddingStatus.generic_error;
+            // TODO: set last error.
+            return NodeEmbeddingStatus.GenericError;
         }
     }
 
@@ -373,18 +346,15 @@ public sealed class NodeEmbedding
 #if UNMANAGED_DELEGATES
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
 #endif
-    internal static unsafe void RunNodeApiCallbackAdapter(
+    internal static unsafe void NodeApiRunCallbackAdapter(
         nint cb_data,
-        node_embedding_runtime runtime,
         napi_env env)
     {
         try
         {
             var callback = (RunNodeApiCallback)GCHandle.FromIntPtr(cb_data).Target!;
-            NodeEmbeddingRuntime embeddingRuntime = NodeEmbeddingRuntime.FromHandle(runtime)
-                ?? throw new InvalidOperationException("Embedding runtime is not found");
             using var jsValueScope = new JSValueScope(JSValueScopeType.Root, env, JSRuntime);
-            callback(embeddingRuntime);
+            callback();
         }
         catch (Exception)
         {

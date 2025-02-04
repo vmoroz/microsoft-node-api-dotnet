@@ -25,66 +25,64 @@ public sealed class NodeEmbeddingRuntimeSettings
 
     public static JSRuntime JSRuntime => NodeEmbedding.JSRuntime;
 
-    public static unsafe ConfigureRuntimeCallback CreateConfigureRuntimeCallback(
-        NodeEmbeddingRuntimeSettings? settings)
+    public unsafe ConfigureRuntimeCallback CreateConfigureRuntimeCallback()
     {
         return new ConfigureRuntimeCallback((platform, config) =>
         {
-            if (settings?.NodeApiVersion != null)
+            if (NodeApiVersion != null)
             {
                 JSRuntime.EmbeddingRuntimeConfigSetNodeApiVersion(
-                    config, settings.NodeApiVersion.Value)
+                    config, NodeApiVersion.Value)
                     .ThrowIfFailed();
             }
-            if (settings?.RuntimeFlags != null)
+            if (RuntimeFlags != null)
             {
-                JSRuntime.EmbeddingRuntimeConfigSetFlags(config, settings.RuntimeFlags.Value)
+                JSRuntime.EmbeddingRuntimeConfigSetFlags(config, RuntimeFlags.Value)
                     .ThrowIfFailed();
             }
-            if (settings?.Args != null || settings?.RuntimeArgs != null)
+            if (Args != null || RuntimeArgs != null)
             {
-                JSRuntime.EmbeddingRuntimeConfigSetArgs(config, settings.Args, settings.RuntimeArgs)
+                JSRuntime.EmbeddingRuntimeConfigSetArgs(config, Args, RuntimeArgs)
                     .ThrowIfFailed();
             }
-            if (settings?.OnPreload != null)
+            if (OnPreload != null)
             {
                 JSRuntime.EmbeddingRuntimeConfigOnPreload(
                     config,
                     new node_embedding_runtime_preload_callback(s_runtimePreloadCallback),
-                    (nint)GCHandle.Alloc(settings.OnPreload),
+                    (nint)GCHandle.Alloc(OnPreload),
                     new node_embedding_data_release_callback(s_releaseDataCallback))
                     .ThrowIfFailed();
             }
-            if (settings?.OnLoading != null
-                || settings?.MainScript != null)
+            if (OnLoading != null || MainScript != null)
             {
                 LoadingCallback? loadingCallback =
-                    settings.MainScript != null
+                    MainScript != null
                     ? (NodeEmbeddingRuntime runtime,
                         JSValue process,
                         JSValue require,
                         JSValue runCommonJS)
-                        => runCommonJS.Call(JSValue.Null, (JSValue)settings.MainScript)
-                    : settings.OnLoading;
+                        => runCommonJS.Call(JSValue.Null, (JSValue)MainScript)
+                    : OnLoading;
                 JSRuntime.EmbeddingRuntimeConfigOnLoading(
                     config,
                     new node_embedding_runtime_loading_callback(s_runtimeLoadingCallback),
-                    (nint)GCHandle.Alloc(settings.OnLoading),
+                    (nint)GCHandle.Alloc(OnLoading),
                     new node_embedding_data_release_callback(s_releaseDataCallback))
                     .ThrowIfFailed();
             }
-            if (settings?.OnLoaded != null)
+            if (OnLoaded != null)
             {
                 JSRuntime.EmbeddingRuntimeConfigOnLoaded(
                     config,
                     new node_embedding_runtime_loaded_callback(s_runtimeLoadedCallback),
-                    (nint)GCHandle.Alloc(settings.OnLoaded),
+                    (nint)GCHandle.Alloc(OnLoaded),
                     new node_embedding_data_release_callback(s_releaseDataCallback))
                     .ThrowIfFailed();
             }
-            if (settings?.Modules != null)
+            if (Modules != null)
             {
-                foreach (NodeEmbeddingModuleInfo module in settings.Modules)
+                foreach (NodeEmbeddingModuleInfo module in Modules)
                 {
                     JSRuntime.EmbeddingRuntimeConfigAddModule(
                         config,
@@ -98,16 +96,16 @@ public sealed class NodeEmbeddingRuntimeSettings
                         .ThrowIfFailed();
                 }
             }
-            if (settings?.OnPostTask != null)
+            if (OnPostTask != null)
             {
                 JSRuntime.EmbeddingRuntimeConfigSetTaskRunner(
                     config,
                     new node_embedding_task_post_callback(s_taskPostCallback),
-                    (nint)GCHandle.Alloc(settings.OnPostTask),
+                    (nint)GCHandle.Alloc(OnPostTask),
                     new node_embedding_data_release_callback(s_releaseDataCallback))
                     .ThrowIfFailed();
             }
-            settings?.ConfigureRuntime?.Invoke(platform, config);
+            ConfigureRuntime?.Invoke(platform, config);
         });
     }
 }

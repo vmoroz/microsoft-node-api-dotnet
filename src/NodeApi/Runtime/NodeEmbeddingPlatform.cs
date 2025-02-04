@@ -14,7 +14,7 @@ using static NodejsRuntime;
 /// <remarks>
 /// Only one Node.js platform instance can be created per process. Once the platform is disposed,
 /// another platform instance cannot be re-initialized. One or more
-/// <see cref="NodejsEmbeddingThreadRuntime" /> instances may be created using the platform.
+/// <see cref="NodeEmbeddingThreadRuntime" /> instances may be created using the platform.
 /// </remarks>
 public sealed class NodeEmbeddingPlatform : IDisposable
 {
@@ -93,6 +93,8 @@ public sealed class NodeEmbeddingPlatform : IDisposable
         _platform = platform;
     }
 
+    public node_embedding_platform Handle => _platform;
+
     /// <summary>
     /// Gets a value indicating whether the current platform has been disposed.
     /// </summary>
@@ -124,7 +126,7 @@ public sealed class NodeEmbeddingPlatform : IDisposable
     /// importing modules is not enabled and `__dirname` is undefined.</param>
     /// <param name="mainScript">Optional script to run in the environment. (Literal script content,
     /// not a path to a script file.)</param>
-    /// <returns>A new <see cref="NodejsEmbeddingThreadRuntime" /> instance.</returns>
+    /// <returns>A new <see cref="NodeEmbeddingThreadRuntime" /> instance.</returns>
     // TODO: Implement this method
     //public NodejsEmbeddingThreadRuntime CreateThreadRuntime(
     //    string? baseDir = null,
