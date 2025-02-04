@@ -88,7 +88,7 @@ public abstract class Benchmarks
     {
         NodeEmbeddingPlatform platform = new(
             LibnodePath,
-            new NodejsEmbeddingPlatformSettings { Args = s_settings });
+            new NodeEmbeddingPlatformSettings { Args = s_settings });
 
         // This setup avoids using NodejsEmbeddingThreadRuntime so benchmarks can run on
         // the same thread. NodejsEmbeddingThreadRuntime creates a separate thread that would slow

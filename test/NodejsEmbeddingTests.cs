@@ -27,7 +27,7 @@ public class NodejsEmbeddingTests
     // The Node.js platform may only be initialized once per process.
     internal static NodeEmbeddingPlatform? NodejsPlatform { get; } =
         File.Exists(LibnodePath)
-            ? new(LibnodePath, new NodejsEmbeddingPlatformSettings
+            ? new(LibnodePath, new NodeEmbeddingPlatformSettings
             {
                 Args = new[] { "node", "--expose-gc" }
             })
@@ -51,9 +51,9 @@ public class NodejsEmbeddingTests
     public void LoadMainScriptNoThread()
     {
         Skip.If(NodejsPlatform == null, "Node shared library not found at " + LibnodePath);
-        using var runtime = new NodejsEmbeddingRuntime(NodejsPlatform,
+        using var runtime = new NodeEmbeddingRuntime(NodejsPlatform,
             new NodeEmbeddingRuntimeSettings { MainScript = MainScript });
-        runtime.CompleteEventLoop();
+        runtime.RunEventLoop();
     }
 
     [SkippableFact]
