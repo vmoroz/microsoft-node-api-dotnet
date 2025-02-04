@@ -3,9 +3,9 @@
 
 namespace Microsoft.JavaScript.NodeApi.Runtime;
 
-using static NodejsEmbedding;
+using static NodeEmbedding;
 
-public class NodejsEmbeddingModuleInfo
+public class NodeEmbeddingModuleInfo
 {
     public string? Name { get; set; }
     public InitializeModuleCallback? OnInitialize { get; set; }

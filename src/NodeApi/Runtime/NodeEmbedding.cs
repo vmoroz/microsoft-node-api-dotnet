@@ -14,7 +14,7 @@ using static NodejsRuntime;
 /// <summary>
 /// Shared code for the Node.js embedding classes.
 /// </summary>
-public sealed class NodejsEmbedding
+public sealed class NodeEmbedding
 {
     public static readonly int EmbeddingApiVersion = 1;
     public static readonly int NodeApiVersion = 8;
@@ -33,15 +33,15 @@ public sealed class NodejsEmbedding
         }
     }
 
-    public static void Initialize(string libnodePath)
+    public static void Initialize(string libNodePath)
     {
-        if (string.IsNullOrEmpty(libnodePath)) throw new ArgumentNullException(nameof(libnodePath));
+        if (string.IsNullOrEmpty(libNodePath)) throw new ArgumentNullException(nameof(libNodePath));
         if (s_jsRuntime != null)
         {
             throw new InvalidOperationException(
                 "The JSRuntime can be initialized only once per process.");
         }
-        nint libnodeHandle = NativeLibrary.Load(libnodePath);
+        nint libnodeHandle = NativeLibrary.Load(libNodePath);
         s_jsRuntime = new NodejsRuntime(libnodeHandle);
     }
 
@@ -50,19 +50,22 @@ public sealed class NodejsEmbedding
         node_embedding_platform platform, node_embedding_runtime_config platformConfig);
     public delegate void GetArgsCallback(string[] args);
     public delegate void PreloadCallback(
-        NodejsEmbeddingRuntime runtime, JSValue process, JSValue require);
-    public delegate JSValue StartExecutionCallback(
-        NodejsEmbeddingRuntime runtime, JSValue process, JSValue require, JSValue runCommonJS);
-    public delegate void HandleResultCallback(
-        NodejsEmbeddingRuntime runtime, JSValue value);
+        NodeEmbeddingRuntime runtime, JSValue process, JSValue require);
+    public delegate JSValue LoadingCallback(
+        NodeEmbeddingRuntime runtime, JSValue process, JSValue require, JSValue runCommonJS);
+    public delegate void LoadedCallback(
+        NodeEmbeddingRuntime runtime, JSValue loadResul);
     public delegate JSValue InitializeModuleCallback(
-        NodejsEmbeddingRuntime runtime, string moduleName, JSValue exports);
+        NodeEmbeddingRuntime runtime, string moduleName, JSValue exports);
     public delegate void RunTaskCallback();
-    public delegate void PostTaskCallback(node_embedding_run_task_functor runTask);
-    public delegate void RunNodeApiCallback(NodejsEmbeddingRuntime runtime);
+    public delegate bool PostTaskCallback(
+        node_embedding_task_run_callback runTask,
+        nint taskData,
+        node_embedding_data_release_callback releaseTaskData);
+    public delegate void RunNodeApiCallback(NodeEmbeddingRuntime runtime);
 
 #if UNMANAGED_DELEGATES
-    internal static readonly unsafe delegate* unmanaged[Cdecl]<nint, void>
+    internal static readonly unsafe delegate* unmanaged[Cdecl]<nint, NodeEmbeddingStatus>
     s_releaseDataCallback = &ReleaseDataCallbackAdapter;
     internal static readonly unsafe delegate* unmanaged[Cdecl]<
         nint, nint, nuint, NodeEmbeddingStatus, NodeEmbeddingStatus>
@@ -81,47 +84,50 @@ public sealed class NodejsEmbedding
         s_getArgsCallback = &GetArgsCallbackAdapter;
     internal static readonly unsafe delegate* unmanaged[Cdecl]<
         nint, node_embedding_runtime, napi_env, napi_value, napi_value, void>
-        s_preloadCallback = &PreloadCallbackAdapter;
+        s_runtimePreloadCallback = &RuntimePreloadCallbackAdapter;
     internal static readonly unsafe delegate* unmanaged[Cdecl]<
         nint, node_embedding_runtime, napi_env, napi_value, napi_value, napi_value, napi_value>
-        s_startExecutionCallback = &StartExecutionCallbackAdapter;
+        s_runtimeLoadingCallback = &RuntimeLoadingCallbackAdapter;
     internal static readonly unsafe delegate* unmanaged[Cdecl]<
         nint, node_embedding_runtime, napi_env, napi_value, void>
-        s_handleResultCallback = &HandleResultCallbackAdapter;
+        s_runtimeLoadedCallback = &RuntimeLoadedCallbackAdapter;
     internal static readonly unsafe delegate* unmanaged[Cdecl]<
         nint, node_embedding_runtime, napi_env, nint, napi_value, napi_value>
-        s_initializeModuleCallback = &InitializeModuleCallbackAdapter;
-    internal static readonly unsafe delegate* unmanaged[Cdecl]<nint, void>
-        s_runTaskCallback = &RunTaskCallbackAdapter;
+        s_moduleInitializeCallback = &ModuleInitializeCallbackAdapter;
+    internal static readonly unsafe delegate* unmanaged[Cdecl]<nint, NodeEmbeddingStatus>
+        s_taskRunTaskCallback = &TaskRunCallbackAdapter;
     internal static readonly unsafe delegate* unmanaged[Cdecl]<
-        nint, node_embedding_run_task_functor, void>
-        s_postTaskCallback = &PostTaskCallbackAdapter;
+        nint,
+        node_embedding_task_run_callback,
+        nint,
+        node_embedding_data_release_callback,
+        nint,
+        NodeEmbeddingStatus>
+        s_taskPostCallback = &TaskPostCallbackAdapter;
     internal static readonly unsafe delegate* unmanaged[Cdecl]<
         nint, node_embedding_runtime, napi_env, void>
         s_runNodeApiCallback = &RunNodeApiCallbackAdapter;
 #else
-    internal static readonly node_embedding_release_data_callback.Delegate
+    internal static readonly node_embedding_data_release_callback.Delegate
         s_releaseDataCallback = ReleaseDataCallbackAdapter;
-    internal static readonly node_embedding_handle_error_callback.Delegate
-        s_handleErrorCallback = HandleErrorCallbackAdapter;
     internal static readonly node_embedding_platform_configure_callback.Delegate
         s_configurePlatformCallback = ConfigurePlatformCallbackAdapter;
     internal static readonly node_embedding_configure_runtime_callback.Delegate
         s_configureRuntimeCallback = ConfigureRuntimeCallbackAdapter;
     internal static readonly node_embedding_get_args_callback.Delegate
         s_getArgsCallback = GetArgsCallbackAdapter;
-    internal static readonly node_embedding_preload_callback.Delegate
-        s_preloadCallback = PreloadCallbackAdapter;
-    internal static readonly node_embedding_start_execution_callback.Delegate
-        s_startExecutionCallback = StartExecutionCallbackAdapter;
-    internal static readonly node_embedding_handle_result_callback.Delegate
-        s_handleResultCallback = HandleResultCallbackAdapter;
-    internal static readonly node_embedding_initialize_module_callback.Delegate
-        s_initializeModuleCallback = InitializeModuleCallbackAdapter;
-    internal static readonly node_embedding_run_task_callback.Delegate
-        s_runTaskCallback = RunTaskCallbackAdapter;
-    internal static readonly node_embedding_post_task_callback.Delegate
-        s_postTaskCallback = PostTaskCallbackAdapter;
+    internal static readonly node_embedding_runtime_preload_callback.Delegate
+        s_runtimePreloadCallback = RuntimePreloadCallbackAdapter;
+    internal static readonly node_embedding_runtime_loading_callback.Delegate
+        s_runtimeLoadingCallback = RuntimeLoadingCallbackAdapter;
+    internal static readonly node_embedding_runtime_loaded_callback.Delegate
+        s_runtimeLoadedCallback = RuntimeLoadedCallbackAdapter;
+    internal static readonly node_embedding_module_initialize_callback.Delegate
+        s_moduleInitializeCallback = ModuleInitializeCallbackAdapter;
+    internal static readonly node_embedding_task_run_callback.Delegate
+        s_taskRunCallback = TaskRunCallbackAdapter;
+    internal static readonly node_embedding_task_post_callback.Delegate
+        s_taskPostCallback = TaskPostCallbackAdapter;
     internal static readonly node_embedding_run_node_api_callback.Delegate
         s_runNodeApiCallback = RunNodeApiCallbackAdapter;
 #endif
@@ -129,12 +135,13 @@ public sealed class NodejsEmbedding
 #if UNMANAGED_DELEGATES
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
 #endif
-    internal static unsafe void ReleaseDataCallbackAdapter(nint data)
+    internal static unsafe NodeEmbeddingStatus ReleaseDataCallbackAdapter(nint data)
     {
         if (data != default)
         {
             GCHandle.FromIntPtr(data).Free();
         }
+        return NodeEmbeddingStatus.OK;
     }
 
 
@@ -217,7 +224,7 @@ public sealed class NodejsEmbedding
 #if UNMANAGED_DELEGATES
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
 #endif
-    internal static unsafe void PreloadCallbackAdapter(
+    internal static unsafe void RuntimePreloadCallbackAdapter(
         nint cb_data,
         node_embedding_runtime runtime,
         napi_env env,
@@ -227,7 +234,7 @@ public sealed class NodejsEmbedding
         try
         {
             var callback = (PreloadCallback)GCHandle.FromIntPtr(cb_data).Target!;
-            NodejsEmbeddingRuntime embeddingRuntime = NodejsEmbeddingRuntime.GetOrCreate(runtime)
+            NodeEmbeddingRuntime embeddingRuntime = NodeEmbeddingRuntime.GetOrCreate(runtime)
                 ?? throw new InvalidOperationException("Embedding runtime is not found");
             using var jsValueScope = new JSValueScope(JSValueScopeType.Root, env, JSRuntime);
             callback(embeddingRuntime, new JSValue(process), new JSValue(require));
@@ -241,7 +248,7 @@ public sealed class NodejsEmbedding
 #if UNMANAGED_DELEGATES
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
 #endif
-    internal static unsafe napi_value StartExecutionCallbackAdapter(
+    internal static unsafe napi_value RuntimeLoadingCallbackAdapter(
         nint cb_data,
         node_embedding_runtime runtime,
         napi_env env,
@@ -251,8 +258,9 @@ public sealed class NodejsEmbedding
     {
         try
         {
-            var callback = (StartExecutionCallback)GCHandle.FromIntPtr(cb_data).Target!;
-            NodejsEmbeddingRuntime embeddingRuntime = NodejsEmbeddingRuntime.GetOrCreate(runtime)
+            var callback = (LoadingCallback)GCHandle.FromIntPtr(cb_data).Target!;
+            //TODO: Unwrap from runtime
+            NodeEmbeddingRuntime embeddingRuntime = NodeEmbeddingRuntime.GetOrCreate(runtime)
                 ?? throw new InvalidOperationException("Embedding runtime is not found");
             using var jsValueScope = new JSValueScope(JSValueScopeType.Root, env, JSRuntime);
             return (napi_value)callback(
@@ -260,6 +268,7 @@ public sealed class NodejsEmbedding
         }
         catch (Exception)
         {
+            // TODO: Handle exception.
             return default;
         }
     }
@@ -267,19 +276,19 @@ public sealed class NodejsEmbedding
 #if UNMANAGED_DELEGATES
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
 #endif
-    internal static unsafe void HandleResultCallbackAdapter(
+    internal static unsafe void RuntimeLoadedCallbackAdapter(
         nint cb_data,
         node_embedding_runtime runtime,
         napi_env env,
-        napi_value value)
+        napi_value loading_result)
     {
         try
         {
-            var callback = (HandleResultCallback)GCHandle.FromIntPtr(cb_data).Target!;
-            NodejsEmbeddingRuntime embeddingRuntime = NodejsEmbeddingRuntime.GetOrCreate(runtime)
+            var callback = (LoadedCallback)GCHandle.FromIntPtr(cb_data).Target!;
+            NodeEmbeddingRuntime embeddingRuntime = NodeEmbeddingRuntime.GetOrCreate(runtime)
                 ?? throw new InvalidOperationException("Embedding runtime is not found");
             using var jsValueScope = new JSValueScope(JSValueScopeType.Root, env, JSRuntime);
-            callback(embeddingRuntime, new JSValue(value));
+            callback(embeddingRuntime, new JSValue(loading_result));
         }
         catch (Exception)
         {
@@ -290,7 +299,7 @@ public sealed class NodejsEmbedding
 #if UNMANAGED_DELEGATES
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
 #endif
-    internal static unsafe napi_value InitializeModuleCallbackAdapter(
+    internal static unsafe napi_value ModuleInitializeCallbackAdapter(
         nint cb_data,
         node_embedding_runtime runtime,
         napi_env env,
@@ -300,7 +309,7 @@ public sealed class NodejsEmbedding
         try
         {
             var callback = (InitializeModuleCallback)GCHandle.FromIntPtr(cb_data).Target!;
-            NodejsEmbeddingRuntime embeddingRuntime = NodejsEmbeddingRuntime.GetOrCreate(runtime)
+            NodeEmbeddingRuntime embeddingRuntime = NodeEmbeddingRuntime.GetOrCreate(runtime)
                 ?? throw new InvalidOperationException("Embedding runtime is not found");
             using var jsValueScope = new JSValueScope(JSValueScopeType.Root, env, JSRuntime);
             return (napi_value)callback(
@@ -310,6 +319,7 @@ public sealed class NodejsEmbedding
         }
         catch (Exception)
         {
+            // TODO: Handle exception.
             return default;
         }
     }
@@ -317,34 +327,46 @@ public sealed class NodejsEmbedding
 #if UNMANAGED_DELEGATES
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
 #endif
-    internal static unsafe void RunTaskCallbackAdapter(nint cb_data)
+    internal static unsafe NodeEmbeddingStatus TaskRunCallbackAdapter(nint cb_data)
     {
         try
         {
             var callback = (RunTaskCallback)GCHandle.FromIntPtr(cb_data).Target!;
             callback();
+            return NodeEmbeddingStatus.OK;
         }
         catch (Exception)
         {
             // TODO: Handle exception.
+            return NodeEmbeddingStatus.GenericError;
         }
     }
 
 #if UNMANAGED_DELEGATES
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
 #endif
-    internal static unsafe void PostTaskCallbackAdapter(
+    internal static unsafe NodeEmbeddingStatus TaskPostCallbackAdapter(
         nint cb_data,
-        node_embedding_run_task_functor run_task)
+        node_embedding_task_run_callback run_task,
+        nint task_data,
+        node_embedding_data_release_callback release_task_data,
+        nint is_posted)
     {
         try
         {
             var callback = (PostTaskCallback)GCHandle.FromIntPtr(cb_data).Target!;
-            callback(run_task);
+            bool isPosted = callback(run_task, task_data, release_task_data);
+            if (is_posted != default)
+            {
+                *(c_bool*)is_posted = isPosted;
+            }
+
+            return NodeEmbeddingStatus.OK;
         }
         catch (Exception)
         {
             // TODO: Handle exception.
+            return NodeEmbeddingStatus.GenericError;
         }
     }
 
@@ -359,7 +381,7 @@ public sealed class NodejsEmbedding
         try
         {
             var callback = (RunNodeApiCallback)GCHandle.FromIntPtr(cb_data).Target!;
-            NodejsEmbeddingRuntime embeddingRuntime = NodejsEmbeddingRuntime.FromHandle(runtime)
+            NodeEmbeddingRuntime embeddingRuntime = NodeEmbeddingRuntime.FromHandle(runtime)
                 ?? throw new InvalidOperationException("Embedding runtime is not found");
             using var jsValueScope = new JSValueScope(JSValueScopeType.Root, env, JSRuntime);
             callback(embeddingRuntime);

@@ -6,20 +6,20 @@ namespace Microsoft.JavaScript.NodeApi.Runtime;
 using System;
 using static JSRuntime;
 
-public sealed class NodejsEmbeddingNodeApiScope : IDisposable
+public sealed class NodeEmbeddingNodeApiScope : IDisposable
 {
-    readonly NodejsEmbeddingRuntime _runtime;
+    readonly NodeEmbeddingRuntime _runtime;
     private node_embedding_node_api_scope _nodeApiScope;
     private readonly JSValueScope _valueScope;
 
-    public NodejsEmbeddingNodeApiScope(NodejsEmbeddingRuntime runtime)
+    public NodeEmbeddingNodeApiScope(NodeEmbeddingRuntime runtime)
     {
         _runtime = runtime;
-        NodejsEmbeddingRuntime.JSRuntime.EmbeddingOpenNodeApiScope(
+        NodeEmbeddingRuntime.JSRuntime.EmbeddingOpenNodeApiScope(
             runtime, out _nodeApiScope, out napi_env env)
             .ThrowIfFailed();
         _valueScope = new JSValueScope(
-            JSValueScopeType.Root, env, NodejsEmbeddingRuntime.JSRuntime);
+            JSValueScopeType.Root, env, NodeEmbeddingRuntime.JSRuntime);
     }
 
     /// <summary>
@@ -36,7 +36,7 @@ public sealed class NodejsEmbeddingNodeApiScope : IDisposable
         IsDisposed = true;
 
         _valueScope.Dispose();
-        NodejsEmbeddingRuntime.JSRuntime.EmbeddingCloseNodeApiScope(_runtime, _nodeApiScope)
+        NodeEmbeddingRuntime.JSRuntime.EmbeddingCloseNodeApiScope(_runtime, _nodeApiScope)
             .ThrowIfFailed();
     }
 }
