@@ -7,7 +7,7 @@ using static NodeEmbedding;
 
 public class NodeEmbeddingModuleInfo
 {
-    public string? Name { get; set; }
-    public InitializeModuleCallback? OnInitialize { get; set; }
+    public required string Name { get; set; }
+    public required InitializeModuleCallback OnInitialize { get; set; }
     public int? NodeApiVersion { get; set; }
 }

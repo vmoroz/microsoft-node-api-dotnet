@@ -10,5 +10,5 @@ public class NodeEmbeddingPlatformSettings
 {
     public NodeEmbeddingPlatformFlags? PlatformFlags { get; set; }
     public string[]? Args { get; set; }
-    public ConfigurePlatformCallback? ConfigurePlatform { get; set; }
+    public PlatformConfigureCallback? ConfigurePlatform { get; set; }
 }

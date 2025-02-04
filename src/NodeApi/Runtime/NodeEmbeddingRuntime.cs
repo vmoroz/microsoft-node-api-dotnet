@@ -36,23 +36,14 @@ public sealed class NodeEmbeddingRuntime : IDisposable
     public unsafe NodeEmbeddingRuntime(
         NodeEmbeddingPlatform platform, NodeEmbeddingRuntimeSettings? settings = null)
     {
-        ConfigureRuntimeCallback? configureRuntime = settings?.CreateConfigureRuntimeCallback();
-        nint callbackData = configureRuntime != null
-            ? (nint)GCHandle.Alloc(configureRuntime)
-            : default;
-        try
-        {
-            JSRuntime.EmbeddingCreateRuntime(
-                platform.Handle,
-                new node_embedding_runtime_configure_callback(s_runtimeConfigureCallback),
-                callbackData,
-                out _runtime)
-                .ThrowIfFailed();
-        }
-        finally
-        {
-            if (callbackData != default) GCHandle.FromIntPtr(callbackData).Free();
-        }
+        using FunctorRef<node_embedding_runtime_configure_callback> functorRef =
+            CreateRuntimeConfigureFunctorRef(settings?.CreateConfigureRuntimeCallback());
+        JSRuntime.EmbeddingCreateRuntime(
+            platform.Handle,
+            functorRef.Callback,
+            functorRef.Data
+            out _runtime)
+            .ThrowIfFailed();
     }
 
     private NodeEmbeddingRuntime(node_embedding_runtime runtime)

@@ -48,7 +48,6 @@ public sealed class NodeEmbedding
     public delegate void ConfigurePlatformCallback(NodeEmbeddingPlatformConfig platformConfig);
     public delegate void ConfigureRuntimeCallback(
         node_embedding_platform platform, node_embedding_runtime_config platformConfig);
-    public delegate void GetArgsCallback(string[] args);
     public delegate void PreloadCallback(
         NodeEmbeddingRuntime runtime, JSValue process, JSValue require);
     public delegate JSValue LoadingCallback(
@@ -63,6 +62,63 @@ public sealed class NodeEmbedding
         nint taskData,
         node_embedding_data_release_callback releaseTaskData);
     public delegate void RunNodeApiCallback();
+
+    public struct Functor<T>
+    {
+        public nint Data;
+        public T Callback;
+        public unsafe node_embedding_data_release_callback DataRelease =>
+            new node_embedding_data_release_callback(s_releaseDataCallback);
+    }
+
+    public struct FunctorRef<T> : IDisposable
+    {
+        public nint Data;
+        public T Callback;
+
+        public void Dispose()
+        {
+            if (Data != default)
+                GCHandle.FromIntPtr(Data).Free();
+        }
+    }
+
+    public static unsafe FunctorRef<node_embedding_runtime_configure_callback>
+    CreateRuntimeConfigureFunctorRef(ConfigureRuntimeCallback? callback) => new()
+    {
+        Data = callback != null ? (nint)GCHandle.Alloc(callback) : default,
+        Callback = callback != null
+            ? new node_embedding_runtime_configure_callback(s_runtimeConfigureCallback)
+            : default
+    };
+
+    public static unsafe Functor<node_embedding_runtime_preload_callback>
+    CreateRuntimePreloadFunctor(PreloadCallback callback) => new()
+    {
+        Data = (nint)GCHandle.Alloc(callback),
+        Callback = new node_embedding_runtime_preload_callback(s_runtimePreloadCallback)
+    };
+
+    public static unsafe Functor<node_embedding_runtime_loading_callback>
+    CreateRuntimeLoadingFunctor(LoadingCallback callback) => new()
+    {
+        Data = (nint)GCHandle.Alloc(callback),
+        Callback = new node_embedding_runtime_loading_callback(s_runtimeLoadingCallback)
+    };
+
+    public static unsafe Functor<node_embedding_runtime_loaded_callback>
+    CreateRuntimeLoadedFunctor(LoadedCallback callback) => new()
+    {
+        Data = (nint)GCHandle.Alloc(callback),
+        Callback = new node_embedding_runtime_loaded_callback(s_runtimeLoadedCallback)
+    };
+
+    public static unsafe Functor<node_embedding_module_initialize_callback>
+    CreateModuleInitializeFunctor(InitializeModuleCallback callback) => new()
+    {
+        Data = (nint)GCHandle.Alloc(callback),
+        Callback = new node_embedding_module_initialize_callback(s_moduleInitializeCallback)
+    };
 
 #if UNMANAGED_DELEGATES
     internal static readonly unsafe delegate* unmanaged[Cdecl]<nint, NodeEmbeddingStatus>
@@ -175,22 +231,6 @@ public sealed class NodeEmbedding
         {
             // TODO: set last error.
             return NodeEmbeddingStatus.GenericError;
-        }
-    }
-
-#if UNMANAGED_DELEGATES
-    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
-#endif
-    internal static unsafe void GetArgsCallbackAdapter(nint cb_data, int argc, nint argv)
-    {
-        try
-        {
-            var callback = (GetArgsCallback)GCHandle.FromIntPtr(cb_data).Target!;
-            callback(Utf8StringArray.ToStringArray(argv, argc));
-        }
-        catch (Exception)
-        {
-            // TODO: Handle exception.
         }
     }
 

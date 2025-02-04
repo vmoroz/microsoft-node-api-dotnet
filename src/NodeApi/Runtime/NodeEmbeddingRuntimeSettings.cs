@@ -26,8 +26,7 @@ public sealed class NodeEmbeddingRuntimeSettings
     public static JSRuntime JSRuntime => NodeEmbedding.JSRuntime;
 
     public unsafe ConfigureRuntimeCallback CreateConfigureRuntimeCallback()
-    {
-        return new ConfigureRuntimeCallback((platform, config) =>
+        => new ((platform, config) =>
         {
             if (NodeApiVersion != null)
             {
@@ -45,57 +44,65 @@ public sealed class NodeEmbeddingRuntimeSettings
                 JSRuntime.EmbeddingRuntimeConfigSetArgs(config, Args, RuntimeArgs)
                     .ThrowIfFailed();
             }
+
             if (OnPreload != null)
             {
+                Functor<node_embedding_runtime_preload_callback> functor =
+                    CreateRuntimePreloadFunctor(OnPreload);
                 JSRuntime.EmbeddingRuntimeConfigOnPreload(
-                    config,
-                    new node_embedding_runtime_preload_callback(s_runtimePreloadCallback),
-                    (nint)GCHandle.Alloc(OnPreload),
-                    new node_embedding_data_release_callback(s_releaseDataCallback))
+                    config, functor.Callback, functor.Data, functor.DataRelease)
                     .ThrowIfFailed();
             }
-            if (OnLoading != null || MainScript != null)
+
+            if (MainScript != null)
             {
-                LoadingCallback? loadingCallback =
-                    MainScript != null
-                    ? (NodeEmbeddingRuntime runtime,
-                        JSValue process,
-                        JSValue require,
-                        JSValue runCommonJS)
-                        => runCommonJS.Call(JSValue.Null, (JSValue)MainScript)
-                    : OnLoading;
+                LoadingCallback onLoading = (NodeEmbeddingRuntime runtime,
+                                             JSValue process,
+                                             JSValue require,
+                                             JSValue runCommonJS)
+                    => runCommonJS.Call(JSValue.Null, (JSValue)MainScript);
+
+                Functor<node_embedding_runtime_loading_callback> functor =
+                    CreateRuntimeLoadingFunctor(onLoading);
                 JSRuntime.EmbeddingRuntimeConfigOnLoading(
-                    config,
-                    new node_embedding_runtime_loading_callback(s_runtimeLoadingCallback),
-                    (nint)GCHandle.Alloc(OnLoading),
-                    new node_embedding_data_release_callback(s_releaseDataCallback))
+                    config, functor.Callback, functor.Data, functor.DataRelease)
                     .ThrowIfFailed();
             }
+            else if (OnLoading != null)
+            {
+                Functor<node_embedding_runtime_loading_callback> functor =
+                    CreateRuntimeLoadingFunctor(OnLoading);
+                JSRuntime.EmbeddingRuntimeConfigOnLoading(
+                    config, functor.Callback, functor.Data, functor.DataRelease)
+                    .ThrowIfFailed();
+            }
+
             if (OnLoaded != null)
             {
+                Functor<node_embedding_runtime_loaded_callback> functor =
+                    CreateRuntimeLoadedFunctor(OnLoaded);
                 JSRuntime.EmbeddingRuntimeConfigOnLoaded(
-                    config,
-                    new node_embedding_runtime_loaded_callback(s_runtimeLoadedCallback),
-                    (nint)GCHandle.Alloc(OnLoaded),
-                    new node_embedding_data_release_callback(s_releaseDataCallback))
+                    config, functor.Callback, functor.Data, functor.DataRelease)
                     .ThrowIfFailed();
             }
+
             if (Modules != null)
             {
                 foreach (NodeEmbeddingModuleInfo module in Modules)
                 {
+                    Functor<node_embedding_module_initialize_callback> functor =
+                        CreateModuleInitializeFunctor(module.OnInitialize);
                     JSRuntime.EmbeddingRuntimeConfigAddModule(
                         config,
-                        (module.Name ?? throw new ArgumentException("Module name is missing"))
-                            .AsSpan(),
-                        new node_embedding_module_initialize_callback(s_moduleInitializeCallback),
-                        (nint)GCHandle.Alloc(module.OnInitialize
-                            ?? throw new ArgumentException("Module initialization is missing")),
-                        new node_embedding_data_release_callback(s_releaseDataCallback),
+                        module.Name.AsSpan(),
+                        functor.Callback,
+                        functor.Data,
+                        functor.DataRelease,
                         module.NodeApiVersion ?? 0)
                         .ThrowIfFailed();
                 }
             }
+
             if (OnPostTask != null)
             {
                 JSRuntime.EmbeddingRuntimeConfigSetTaskRunner(
@@ -107,5 +114,4 @@ public sealed class NodeEmbeddingRuntimeSettings
             }
             ConfigureRuntime?.Invoke(platform, config);
         });
-    }
 }
