@@ -4,8 +4,7 @@
 namespace Microsoft.JavaScript.NodeApi.Runtime;
 
 using System;
-using System.Runtime.InteropServices;
-using static NodejsEmbedding;
+using static NodeEmbedding;
 using static NodejsRuntime;
 
 /// <summary>
@@ -30,16 +29,7 @@ public sealed class NodeEmbeddingPlatform : IDisposable
     /// <param name="settings">Optional platform settings.</param>
     /// <exception cref="InvalidOperationException">A Node.js platform instance has already been
     /// loaded in the current process.</exception>
-    public NodeEmbeddingPlatform(
-        string libNodePath, NodeEmbeddingPlatformSettings? settings)
-        : this(libNodePath, settings?.Args, GetConfigurePlatformCallback(settings))
-    {
-    }
-
-    public unsafe NodeEmbeddingPlatform(
-        string libNodePath,
-        ReadOnlySpan<string> args,
-        ConfigurePlatformCallback? configurePlatform)
+    public NodeEmbeddingPlatform(string libNodePath, NodeEmbeddingPlatformSettings? settings)
     {
         if (Current != null)
         {
@@ -49,48 +39,14 @@ public sealed class NodeEmbeddingPlatform : IDisposable
         Current = this;
         Initialize(libNodePath);
 
-        nint callbackData = (nint)GCHandle.Alloc(configurePlatform);
-        try
-        {
-            JSRuntime.EmbeddingCreatePlatform(
-                args,
-                new node_embedding_platform_configure_callback(s_configurePlatformCallback),
-                callbackData,
-                out _platform)
-                .ThrowIfFailed();
-        }
-        finally
-        {
-            GCHandle.FromIntPtr(callbackData).Free();
-        }
-    }
-
-    internal static ConfigurePlatformCallback? GetConfigurePlatformCallback(
-        NodeEmbeddingPlatformSettings? settings)
-    {
-        if (settings == null)
-        {
-            return null;
-        }
-
-        return (NodeEmbeddingPlatformConfig platformConfig) =>
-        {
-            if (settings.PlatformFlags != null)
-            {
-                JSRuntime.EmbeddingPlatformConfigSetFlags(
-                    platformConfig.Handle, settings.PlatformFlags.Value).ThrowIfFailed();
-            }
-
-            if (settings.ConfigurePlatform != null)
-            {
-                settings.ConfigurePlatform(platformConfig);
-            }
-        };
-    }
-
-    internal NodeEmbeddingPlatform(node_embedding_platform platform)
-    {
-        _platform = platform;
+        using FunctorRef<node_embedding_platform_configure_callback> functorRef =
+            CreatePlatformConfigureFunctorRef(settings?.CreateConfigurePlatformCallback());
+        JSRuntime.EmbeddingCreatePlatform(
+            settings?.Args ?? Array.Empty<string>(),
+            functorRef.Callback,
+            functorRef.Data,
+            out _platform)
+            .ThrowIfFailed();
     }
 
     public node_embedding_platform Handle => _platform;
@@ -105,7 +61,7 @@ public sealed class NodeEmbeddingPlatform : IDisposable
     /// </summary>
     public static NodeEmbeddingPlatform? Current { get; private set; }
 
-    public static JSRuntime JSRuntime => NodejsEmbedding.JSRuntime;
+    public static JSRuntime JSRuntime => NodeEmbedding.JSRuntime;
 
     /// <summary>
     /// Disposes the platform. After disposal, another platform instance may not be initialized
@@ -127,15 +83,14 @@ public sealed class NodeEmbeddingPlatform : IDisposable
     /// <param name="mainScript">Optional script to run in the environment. (Literal script content,
     /// not a path to a script file.)</param>
     /// <returns>A new <see cref="NodeEmbeddingThreadRuntime" /> instance.</returns>
-    // TODO: Implement this method
-    //public NodejsEmbeddingThreadRuntime CreateThreadRuntime(
-    //    string? baseDir = null,
-    //    NodejsEmbeddingRuntimeSettings? settings = null)
-    //{
-    //    if (IsDisposed) throw new ObjectDisposedException(nameof(NodejsEmbeddingPlatform));
+    public NodeEmbeddingThreadRuntime CreateThreadRuntime(
+        string? baseDir = null,
+        NodeEmbeddingRuntimeSettings? settings = null)
+    {
+        if (IsDisposed) throw new ObjectDisposedException(nameof(NodeEmbeddingPlatform));
 
-    //    return new NodejsEmbeddingThreadRuntime(this, baseDir, settings);
-    //}
+        return new NodeEmbeddingThreadRuntime(this, baseDir, settings);
+    }
 
     public unsafe string[] GetParsedArgs()
     {

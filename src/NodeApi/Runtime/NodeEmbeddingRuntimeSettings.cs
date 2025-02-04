@@ -9,7 +9,7 @@ using System.Runtime.InteropServices;
 using static Microsoft.JavaScript.NodeApi.Runtime.NodeEmbedding;
 using static Microsoft.JavaScript.NodeApi.Runtime.NodejsRuntime;
 
-public sealed class NodeEmbeddingRuntimeSettings
+public class NodeEmbeddingRuntimeSettings
 {
     public int? NodeApiVersion { get; set; }
     public NodeEmbeddingRuntimeFlags? RuntimeFlags { get; set; }
@@ -105,6 +105,8 @@ public sealed class NodeEmbeddingRuntimeSettings
 
             if (OnPostTask != null)
             {
+                Functor<node_embedding_task_post_callback> functor =
+                    CreateTaskPostFunctor(OnPostTask);
                 JSRuntime.EmbeddingRuntimeConfigSetTaskRunner(
                     config,
                     new node_embedding_task_post_callback(s_taskPostCallback),

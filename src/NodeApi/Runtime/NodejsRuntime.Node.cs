@@ -467,8 +467,8 @@ public unsafe partial class NodejsRuntime
     {
         using (PooledBuffer locationBuffer = PooledBuffer.FromStringUtf8(location))
         using (PooledBuffer messageBuffer = PooledBuffer.FromStringUtf8(message))
-            fixed (byte* location_ptr = &locationBuffer.Pin())
-            fixed (byte* message_ptr = &messageBuffer.Pin())
+            fixed (byte* location_ptr = locationBuffer)
+            fixed (byte* message_ptr = messageBuffer)
             {
                 if (napi_fatal_error == null)
                 {

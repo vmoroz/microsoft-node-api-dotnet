@@ -34,9 +34,9 @@ public sealed class NodeEmbeddingThreadRuntime : IDisposable
         environment._scope;
 
     internal NodeEmbeddingThreadRuntime(
-        NodejsEmbeddingPlatform platform,
+        NodeEmbeddingPlatform platform,
         string? baseDir,
-        NodejsEmbeddingRuntimeSettings? settings)
+        NodeEmbeddingRuntimeSettings? settings)
     {
         JSValueScope scope = null!;
         JSSynchronizationContext syncContext = null!;
@@ -45,9 +45,9 @@ public sealed class NodeEmbeddingThreadRuntime : IDisposable
 
         _thread = new(() =>
         {
-            using var runtime = new NodejsEmbeddingRuntime(platform, settings);
+            using var runtime = new NodeEmbeddingRuntime(platform, settings);
             // The new scope instance saves itself as the thread-local JSValueScope.Current.
-            using var nodeApiScope = new NodejsEmbeddingNodeApiScope(runtime);
+            using var nodeApiScope = new NodeEmbeddingNodeApiScope(runtime);
 
             completion = new JSThreadSafeFunction(
                 maxQueueSize: 0,
@@ -68,7 +68,7 @@ public sealed class NodeEmbeddingThreadRuntime : IDisposable
             // Run the JS event loop until disposal unrefs the completion thread safe function.
             try
             {
-                runtime.CompleteEventLoop();
+                runtime.RunEventLoop();
                 ExitCode = 0;
             }
             catch (Exception)
@@ -87,7 +87,7 @@ public sealed class NodeEmbeddingThreadRuntime : IDisposable
         SynchronizationContext = syncContext;
     }
 
-    public static JSRuntime JSRuntime => NodejsEmbedding.JSRuntime;
+    public static JSRuntime JSRuntime => NodeEmbedding.JSRuntime;
 
     private static void InitializeModuleImportFunctions(
         JSRuntimeContext runtimeContext,

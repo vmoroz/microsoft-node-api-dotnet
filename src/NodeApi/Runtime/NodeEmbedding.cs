@@ -45,9 +45,9 @@ public sealed class NodeEmbedding
         s_jsRuntime = new NodejsRuntime(libnodeHandle);
     }
 
-    public delegate void ConfigurePlatformCallback(NodeEmbeddingPlatformConfig platformConfig);
+    public delegate void ConfigurePlatformCallback(node_embedding_platform_config platformConfig);
     public delegate void ConfigureRuntimeCallback(
-        node_embedding_platform platform, node_embedding_runtime_config platformConfig);
+        node_embedding_platform platform, node_embedding_runtime_config runtimeConfig);
     public delegate void PreloadCallback(
         NodeEmbeddingRuntime runtime, JSValue process, JSValue require);
     public delegate JSValue LoadingCallback(
@@ -82,6 +82,15 @@ public sealed class NodeEmbedding
                 GCHandle.FromIntPtr(Data).Free();
         }
     }
+
+    public static unsafe FunctorRef<node_embedding_platform_configure_callback>
+    CreatePlatformConfigureFunctorRef(ConfigurePlatformCallback? callback) => new()
+    {
+        Data = callback != null ? (nint)GCHandle.Alloc(callback) : default,
+        Callback = callback != null
+            ? new node_embedding_platform_configure_callback(s_platformConfigureCallback)
+            : default
+    };
 
     public static unsafe FunctorRef<node_embedding_runtime_configure_callback>
     CreateRuntimeConfigureFunctorRef(ConfigureRuntimeCallback? callback) => new()
@@ -118,6 +127,13 @@ public sealed class NodeEmbedding
     {
         Data = (nint)GCHandle.Alloc(callback),
         Callback = new node_embedding_module_initialize_callback(s_moduleInitializeCallback)
+    };
+
+    public static unsafe Functor<node_embedding_task_post_callback>
+    CreateTaskPostFunctor(PostTaskCallback callback) => new()
+    {
+        Data = (nint)GCHandle.Alloc(callback),
+        Callback = new node_embedding_task_post_callback(s_taskPostCallback)
     };
 
 #if UNMANAGED_DELEGATES
@@ -203,7 +219,7 @@ public sealed class NodeEmbedding
         try
         {
             var callback = (ConfigurePlatformCallback)GCHandle.FromIntPtr(cb_data).Target!;
-            callback(new NodeEmbeddingPlatformConfig(platform_config));
+            callback(platform_config);
             return NodeEmbeddingStatus.OK;
         }
         catch (Exception)

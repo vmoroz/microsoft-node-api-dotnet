@@ -24,13 +24,6 @@ public sealed class NodeEmbeddingRuntime : IDisposable
     public static explicit operator node_embedding_runtime(NodeEmbeddingRuntime runtime)
         => runtime._runtime;
 
-    public struct Module
-    {
-        public string Name { get; set; }
-        public InitializeModuleCallback OnInitialize { get; set; }
-        public int? NodeApiVersion { get; set; }
-    }
-
     public static JSRuntime JSRuntime => NodeEmbedding.JSRuntime;
 
     public unsafe NodeEmbeddingRuntime(
@@ -41,7 +34,7 @@ public sealed class NodeEmbeddingRuntime : IDisposable
         JSRuntime.EmbeddingCreateRuntime(
             platform.Handle,
             functorRef.Callback,
-            functorRef.Data
+            functorRef.Data,
             out _runtime)
             .ThrowIfFailed();
     }
@@ -51,6 +44,8 @@ public sealed class NodeEmbeddingRuntime : IDisposable
         _runtime = runtime;
         lock (s_embeddedRuntimes) { s_embeddedRuntimes.Add(runtime, this); }
     }
+
+    public node_embedding_runtime Handle => _runtime;
 
     public static NodeEmbeddingRuntime? FromHandle(node_embedding_runtime runtime)
     {
