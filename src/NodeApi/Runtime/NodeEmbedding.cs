@@ -222,9 +222,9 @@ public sealed class NodeEmbedding
             callback(platform_config);
             return NodeEmbeddingStatus.OK;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // TODO: set last error.
+            JSRuntime.EmbeddingSetLastErrorMessage(ex.Message.AsSpan());
             return NodeEmbeddingStatus.GenericError;
         }
     }
@@ -243,9 +243,9 @@ public sealed class NodeEmbedding
             callback(platform, runtime_config);
             return NodeEmbeddingStatus.OK;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // TODO: set last error.
+            JSRuntime.EmbeddingSetLastErrorMessage(ex.Message.AsSpan());
             return NodeEmbeddingStatus.GenericError;
         }
     }
@@ -260,6 +260,7 @@ public sealed class NodeEmbedding
         napi_value process,
         napi_value require)
     {
+        using var scope = new JSValueScope(JSValueScopeType.Callback, env, runtime: default);
         try
         {
             var callback = (PreloadCallback)GCHandle.FromIntPtr(cb_data).Target!;
@@ -268,9 +269,9 @@ public sealed class NodeEmbedding
             using var jsValueScope = new JSValueScope(JSValueScopeType.Root, env, JSRuntime);
             callback(embeddingRuntime, new JSValue(process), new JSValue(require));
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // TODO: Handle exception.
+            JSError.ThrowError(ex);
         }
     }
 
@@ -285,6 +286,7 @@ public sealed class NodeEmbedding
         napi_value require,
         napi_value run_cjs)
     {
+        using var scope = new JSValueScope(JSValueScopeType.Callback, env, runtime: default);
         try
         {
             var callback = (LoadingCallback)GCHandle.FromIntPtr(cb_data).Target!;
@@ -295,10 +297,10 @@ public sealed class NodeEmbedding
             return (napi_value)callback(
                 embeddingRuntime, new JSValue(process), new JSValue(require), new JSValue(run_cjs));
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // TODO: Handle exception.
-            return default;
+            JSError.ThrowError(ex);
+            return napi_value.Null;
         }
     }
 
@@ -311,6 +313,7 @@ public sealed class NodeEmbedding
         napi_env env,
         napi_value loading_result)
     {
+        using var scope = new JSValueScope(JSValueScopeType.Callback, env, runtime: default);
         try
         {
             var callback = (LoadedCallback)GCHandle.FromIntPtr(cb_data).Target!;
@@ -319,9 +322,9 @@ public sealed class NodeEmbedding
             using var jsValueScope = new JSValueScope(JSValueScopeType.Root, env, JSRuntime);
             callback(embeddingRuntime, new JSValue(loading_result));
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // TODO: Handle exception.
+            JSError.ThrowError(ex);
         }
     }
 
@@ -335,6 +338,7 @@ public sealed class NodeEmbedding
         nint module_name,
         napi_value exports)
     {
+        using var scope = new JSValueScope(JSValueScopeType.Callback, env, runtime: default);
         try
         {
             var callback = (InitializeModuleCallback)GCHandle.FromIntPtr(cb_data).Target!;
@@ -346,10 +350,10 @@ public sealed class NodeEmbedding
                 Utf8StringArray.PtrToStringUTF8((byte*)module_name),
                 new JSValue(exports));
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // TODO: Handle exception.
-            return default;
+            JSError.ThrowError(ex);
+            return napi_value.Null;
         }
     }
 
@@ -364,9 +368,9 @@ public sealed class NodeEmbedding
             callback();
             return NodeEmbeddingStatus.OK;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // TODO: Handle exception.
+            JSRuntime.EmbeddingSetLastErrorMessage(ex.Message.AsSpan());
             return NodeEmbeddingStatus.GenericError;
         }
     }
@@ -392,9 +396,9 @@ public sealed class NodeEmbedding
 
             return NodeEmbeddingStatus.OK;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // TODO: Handle exception.
+            JSRuntime.EmbeddingSetLastErrorMessage(ex.Message.AsSpan());
             return NodeEmbeddingStatus.GenericError;
         }
     }
@@ -406,15 +410,16 @@ public sealed class NodeEmbedding
         nint cb_data,
         napi_env env)
     {
+        using var scope = new JSValueScope(JSValueScopeType.Callback, env, runtime: default);
         try
         {
             var callback = (RunNodeApiCallback)GCHandle.FromIntPtr(cb_data).Target!;
             using var jsValueScope = new JSValueScope(JSValueScopeType.Root, env, JSRuntime);
             callback();
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // TODO: Handle exception.
+            JSError.ThrowError(ex);
         }
     }
 }
