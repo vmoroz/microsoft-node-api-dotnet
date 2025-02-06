@@ -42,7 +42,7 @@ public sealed class NodeEmbeddingPlatform : IDisposable
         using FunctorRef<node_embedding_platform_configure_callback> functorRef =
             CreatePlatformConfigureFunctorRef(settings?.CreateConfigurePlatformCallback());
         JSRuntime.EmbeddingCreatePlatform(
-            settings?.Args ?? Array.Empty<string>(),
+            settings?.Args ?? new string[] { "node" },
             functorRef.Callback,
             functorRef.Data,
             out _platform)
