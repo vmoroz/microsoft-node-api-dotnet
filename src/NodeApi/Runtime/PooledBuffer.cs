@@ -1,9 +1,14 @@
-using System;
-using System.Buffers;
-using System.ComponentModel;
-using System.Text;
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 
 namespace Microsoft.JavaScript.NodeApi.Runtime;
+
+using System;
+#if !(NETFRAMEWORK || NETSTANDARD)
+using System.Buffers;
+#endif
+using System.ComponentModel;
+using System.Text;
 
 internal struct PooledBuffer : IDisposable
 {
@@ -17,8 +22,8 @@ internal struct PooledBuffer : IDisposable
 
 #if NETFRAMEWORK || NETSTANDARD
 
-    // Avoid a dependency on System.Buffers with .NET Framwork.
-    // It is available as a nuget package, but might not be installed in the application.
+    // Avoid a dependency on System.Buffers with .NET Framework.
+    // It is available as a NuGet package, but might not be installed in the application.
     // In this case the buffer is not actually pooled.
 
     public PooledBuffer(int length) : this(length, length) { }
@@ -62,7 +67,7 @@ internal struct PooledBuffer : IDisposable
 
     public readonly Span<byte> Span => Buffer;
 
-    // To support the use within a fixed statement.
+    // To support PooledBuffer usage within a fixed statement.
     [EditorBrowsable(EditorBrowsableState.Never)]
     public ref byte GetPinnableReference() => ref Span.GetPinnableReference();
 

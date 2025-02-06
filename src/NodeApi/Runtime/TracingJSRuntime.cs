@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
+namespace Microsoft.JavaScript.NodeApi.Runtime;
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -10,9 +12,6 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.JavaScript.NodeApi.Interop;
-
-namespace Microsoft.JavaScript.NodeApi.Runtime;
-
 using static NodejsRuntime;
 
 /// <summary>

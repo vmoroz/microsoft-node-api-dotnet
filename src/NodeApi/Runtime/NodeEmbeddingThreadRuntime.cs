@@ -1,15 +1,14 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
+namespace Microsoft.JavaScript.NodeApi.Runtime;
+
 using System;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.JavaScript.NodeApi.Interop;
-
-namespace Microsoft.JavaScript.NodeApi.Runtime;
-
 using static JSRuntime;
 
 /// <summary>

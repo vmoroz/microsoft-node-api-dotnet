@@ -6,8 +6,8 @@ namespace Microsoft.JavaScript.NodeApi.Runtime;
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using static Microsoft.JavaScript.NodeApi.Runtime.NodeEmbedding;
-using static Microsoft.JavaScript.NodeApi.Runtime.NodejsRuntime;
+using static NodeEmbedding;
+using static NodejsRuntime;
 
 public class NodeEmbeddingRuntimeSettings
 {

@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-using System;
-
 namespace Microsoft.JavaScript.NodeApi.Runtime;
+
+using System;
 
 // Imports Node.js native APIs defined in js_native_api.h
 public unsafe partial class NodejsRuntime

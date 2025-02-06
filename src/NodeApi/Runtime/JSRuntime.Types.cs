@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
+namespace Microsoft.JavaScript.NodeApi.Runtime;
+
 using System;
 using System.Runtime.InteropServices;
-
-namespace Microsoft.JavaScript.NodeApi.Runtime;
 
 // Type definitions from Node.JS js_native_api.h and js_native_api_types.h
 public unsafe partial class JSRuntime

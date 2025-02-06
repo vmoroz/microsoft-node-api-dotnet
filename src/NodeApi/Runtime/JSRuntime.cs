@@ -1,12 +1,11 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
+namespace Microsoft.JavaScript.NodeApi.Runtime;
+
 using System;
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-
-namespace Microsoft.JavaScript.NodeApi.Runtime;
 
 using static NodejsRuntime;
 

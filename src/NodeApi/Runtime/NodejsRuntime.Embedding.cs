@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
+namespace Microsoft.JavaScript.NodeApi.Runtime;
+
 using System;
 using System.Runtime.InteropServices;
-
-namespace Microsoft.JavaScript.NodeApi.Runtime;
 
 // Imports embedding APIs from libnode.
 public unsafe partial class NodejsRuntime
