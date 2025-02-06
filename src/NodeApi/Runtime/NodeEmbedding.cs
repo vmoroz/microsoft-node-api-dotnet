@@ -67,8 +67,8 @@ public sealed class NodeEmbedding
     {
         public nint Data;
         public T Callback;
-        public unsafe node_embedding_data_release_callback DataRelease =>
-            new node_embedding_data_release_callback(s_releaseDataCallback);
+        public readonly unsafe node_embedding_data_release_callback DataRelease =>
+            new(s_releaseDataCallback);
     }
 
     public struct FunctorRef<T> : IDisposable
@@ -76,7 +76,7 @@ public sealed class NodeEmbedding
         public nint Data;
         public T Callback;
 
-        public void Dispose()
+        public readonly void Dispose()
         {
             if (Data != default)
                 GCHandle.FromIntPtr(Data).Free();

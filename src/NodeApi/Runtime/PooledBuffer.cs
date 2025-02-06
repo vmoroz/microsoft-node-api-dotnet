@@ -69,7 +69,7 @@ internal struct PooledBuffer : IDisposable
 
     // To support PooledBuffer usage within a fixed statement.
     [EditorBrowsable(EditorBrowsableState.Never)]
-    public ref byte GetPinnableReference() => ref Span.GetPinnableReference();
+    public readonly ref byte GetPinnableReference() => ref Span.GetPinnableReference();
 
     public static unsafe PooledBuffer FromStringUtf8(string? value)
     {

@@ -73,7 +73,7 @@ internal struct Utf8StringArray : IDisposable
 
     // To support Utf8StringArray usage within a fixed statement.
     [EditorBrowsable(EditorBrowsableState.Never)]
-    public ref nint GetPinnableReference()
+    public readonly ref nint GetPinnableReference()
     {
         if (Disposed) throw new ObjectDisposedException(nameof(Utf8StringArray));
         Span<nint> span = Utf8Strings;

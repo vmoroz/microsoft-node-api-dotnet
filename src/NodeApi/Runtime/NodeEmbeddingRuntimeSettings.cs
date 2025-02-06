@@ -26,7 +26,7 @@ public class NodeEmbeddingRuntimeSettings
     public static JSRuntime JSRuntime => NodeEmbedding.JSRuntime;
 
     public unsafe ConfigureRuntimeCallback CreateConfigureRuntimeCallback()
-        => new ((platform, config) =>
+        => new((platform, config) =>
         {
             if (NodeApiVersion != null)
             {
@@ -56,7 +56,7 @@ public class NodeEmbeddingRuntimeSettings
 
             if (MainScript != null)
             {
-                LoadingCallback onLoading = (NodeEmbeddingRuntime runtime,
+                JSValue onLoading(NodeEmbeddingRuntime runtime,
                                              JSValue process,
                                              JSValue require,
                                              JSValue runCommonJS)
