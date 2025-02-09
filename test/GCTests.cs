@@ -10,14 +10,13 @@ namespace Microsoft.JavaScript.NodeApi.Test;
 
 public class GCTests
 {
-    private static string LibnodePath { get; } = GetLibnodePath();
 
     [SkippableFact]
     public void GCHandles()
     {
         Skip.If(
             NodejsEmbeddingTests.NodejsPlatform == null,
-            "Node shared library not found at " + LibnodePath);
+            "Node shared library not found.");
         using NodeEmbeddingThreadRuntime nodejs = NodejsEmbeddingTests.CreateNodejsEnvironment();
 
         nodejs.Run(() =>
@@ -68,7 +67,7 @@ public class GCTests
     {
         Skip.If(
             NodejsEmbeddingTests.NodejsPlatform == null,
-            "Node shared library not found at " + LibnodePath);
+            "Node shared library not found.");
         using NodeEmbeddingThreadRuntime nodejs = NodejsEmbeddingTests.CreateNodejsEnvironment();
 
         nodejs.Run(() =>
