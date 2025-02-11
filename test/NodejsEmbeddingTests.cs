@@ -29,7 +29,7 @@ public class NodejsEmbeddingTests
             Args = new[] { "node", "--expose-gc" }
         });
 
-    internal static NodeEmbeddingThreadRuntime CreateNodejsEnvironment()
+    internal static NodeEmbeddingThreadRuntime CreateNodeEmbeddingThreadRuntime()
     {
         return NodejsPlatform.CreateThreadRuntime(
             Path.Combine(GetRepoRootDirectory(), "test"),
@@ -38,7 +38,7 @@ public class NodejsEmbeddingTests
 
     internal static void RunInNodejsEnvironment(Action action)
     {
-        using NodeEmbeddingThreadRuntime nodejs = CreateNodejsEnvironment();
+        using NodeEmbeddingThreadRuntime nodejs = CreateNodeEmbeddingThreadRuntime();
         nodejs.SynchronizationContext.Run(action);
     }
 
@@ -53,13 +53,13 @@ public class NodejsEmbeddingTests
     [Fact]
     public void LoadMainScriptWithThread()
     {
-        using NodeEmbeddingThreadRuntime runtime = CreateNodejsEnvironment();
+        using NodeEmbeddingThreadRuntime runtime = CreateNodeEmbeddingThreadRuntime();
     }
 
     [Fact]
     public void StartEnvironment()
     {
-        using NodeEmbeddingThreadRuntime nodejs = CreateNodejsEnvironment();
+        using NodeEmbeddingThreadRuntime nodejs = CreateNodeEmbeddingThreadRuntime();
 
         nodejs.Run(() =>
         {
@@ -84,7 +84,7 @@ public class NodejsEmbeddingTests
     [Fact]
     public void CallFunction()
     {
-        using NodeEmbeddingThreadRuntime nodejs = CreateNodejsEnvironment();
+        using NodeEmbeddingThreadRuntime nodejs = CreateNodeEmbeddingThreadRuntime();
 
         nodejs.SynchronizationContext.Run(() =>
         {
@@ -100,7 +100,7 @@ public class NodejsEmbeddingTests
     [Fact]
     public void ImportBuiltinModule()
     {
-        using NodeEmbeddingThreadRuntime nodejs = CreateNodejsEnvironment();
+        using NodeEmbeddingThreadRuntime nodejs = CreateNodeEmbeddingThreadRuntime();
 
         nodejs.Run(() =>
         {
@@ -120,7 +120,7 @@ public class NodejsEmbeddingTests
     [Fact]
     public void ImportCommonJSModule()
     {
-        using NodeEmbeddingThreadRuntime nodejs = CreateNodejsEnvironment();
+        using NodeEmbeddingThreadRuntime nodejs = CreateNodeEmbeddingThreadRuntime();
 
         nodejs.Run(() =>
         {
@@ -137,7 +137,7 @@ public class NodejsEmbeddingTests
     [Fact]
     public void ImportCommonJSPackage()
     {
-        using NodeEmbeddingThreadRuntime nodejs = CreateNodejsEnvironment();
+        using NodeEmbeddingThreadRuntime nodejs = CreateNodeEmbeddingThreadRuntime();
 
         nodejs.Run(() =>
         {
@@ -154,7 +154,7 @@ public class NodejsEmbeddingTests
     [Fact]
     public async Task ImportESModule()
     {
-        using NodeEmbeddingThreadRuntime nodejs = CreateNodejsEnvironment();
+        using NodeEmbeddingThreadRuntime nodejs = CreateNodeEmbeddingThreadRuntime();
 
         await nodejs.RunAsync(async () =>
         {
@@ -172,7 +172,7 @@ public class NodejsEmbeddingTests
     [Fact]
     public async Task ImportESPackage()
     {
-        using NodeEmbeddingThreadRuntime nodejs = CreateNodejsEnvironment();
+        using NodeEmbeddingThreadRuntime nodejs = CreateNodeEmbeddingThreadRuntime();
 
         await nodejs.RunAsync(async () =>
         {
@@ -204,7 +204,7 @@ public class NodejsEmbeddingTests
     [Fact]
     public void UnhandledRejection()
     {
-        using NodeEmbeddingThreadRuntime nodejs = CreateNodejsEnvironment();
+        using NodeEmbeddingThreadRuntime nodejs = CreateNodeEmbeddingThreadRuntime();
 
         string? errorMessage = null;
         nodejs.UnhandledPromiseRejection += (_, e) =>
@@ -226,7 +226,7 @@ public class NodejsEmbeddingTests
     [Fact]
     public void ErrorPropagation()
     {
-        using NodeEmbeddingThreadRuntime nodejs = CreateNodejsEnvironment();
+        using NodeEmbeddingThreadRuntime nodejs = CreateNodeEmbeddingThreadRuntime();
 
         JSException exception = Assert.Throws<JSException>(() =>
         {
@@ -382,7 +382,7 @@ public class NodejsEmbeddingTests
         string workerScript,
         Func<NodeWorker, Task> mainRun)
     {
-        using NodeEmbeddingThreadRuntime nodejs = CreateNodejsEnvironment();
+        using NodeEmbeddingThreadRuntime nodejs = CreateNodeEmbeddingThreadRuntime();
         await nodejs.RunAsync(async () =>
         {
             NodeWorker.Options workerOptions = mainPrepare.Invoke();
@@ -414,7 +414,7 @@ public class NodejsEmbeddingTests
     [Fact]
     public void MarshalClass()
     {
-        using NodeEmbeddingThreadRuntime nodejs = CreateNodejsEnvironment();
+        using NodeEmbeddingThreadRuntime nodejs = CreateNodeEmbeddingThreadRuntime();
 
         nodejs.Run(() =>
         {

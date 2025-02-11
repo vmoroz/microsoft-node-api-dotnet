@@ -128,6 +128,7 @@ public sealed class NodeEmbedding
 
     public static void Initialize(string? libNodePath)
     {
+        if (string.IsNullOrEmpty(libNodePath)) throw new ArgumentNullException(nameof(libNodePath));
         if (s_jsRuntime != null)
         {
             throw new InvalidOperationException(

@@ -7,6 +7,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Microsoft.JavaScript.NodeApi.Test;
 
@@ -139,5 +140,26 @@ public static class TestUtils
         {
             File.Copy(sourceFilePath, targetFilePath, overwrite: true);
         }
+    }
+
+    public static Task RunInThread(Action action)
+    {
+        TaskCompletionSource<bool> threadCompletion = new();
+
+        Thread thread = new(() =>
+        {
+            try
+            {
+                action();
+                threadCompletion.TrySetResult(true);
+            }
+            catch (Exception e)
+            {
+                threadCompletion.TrySetException(e);
+            }
+        });
+        thread.Start();
+
+        return threadCompletion.Task;
     }
 }
