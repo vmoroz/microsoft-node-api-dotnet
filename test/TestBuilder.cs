@@ -179,10 +179,8 @@ internal static class TestBuilder
 
         string workingDirectory = Path.GetDirectoryName(projectFilePath)!;
 
-        // Pin the SDK via global.json for every build, including Publish/AOT. When Publish was
-        // skipped, an AOT build inherited a stale per-TFM global.json left in the shared test-case
-        // directory by another TFM's host (e.g. 8.0.100), rolling forward to an SDK that cannot
-        // target the requested framework (NETSDK1045).
+        // Pin the SDK per build so a build never inherits a stale per-TFM global.json that another
+        // TFM's host left in the shared test-case directory.
         WriteCurrentFrameworkGlobalJson(workingDirectory, projectFilePath);
 
         using StreamWriter logWriter = new(File.Open(
