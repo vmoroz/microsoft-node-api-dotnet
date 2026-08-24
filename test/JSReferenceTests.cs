@@ -115,9 +115,9 @@ public class JSReferenceTests
     }
 
     // A reference must have a runtime context. NoContext scopes -- used only by the native host,
-    // which now uses JSHostReference -- cannot create a JSReference: construction throws instead
-    // of yielding a context-less reference, which was the source of the worker-teardown crash
-    // class (the finalizer of a context-less reference asserted thread access off the JS thread).
+    // which uses JSHostReference -- cannot create a JSReference: construction throws instead of
+    // yielding a context-less reference, the source of the worker-teardown crash class (a
+    // context-less reference's finalizer asserted thread access off the JS thread).
     [Fact]
     public void CreateReferenceInNoContextScopeThrows()
     {
