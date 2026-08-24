@@ -178,10 +178,12 @@ internal static class TestBuilder
         if (GetNoBuild()) return;
 
         string workingDirectory = Path.GetDirectoryName(projectFilePath)!;
-        if (target != "Publish")
-        {
-            WriteCurrentFrameworkGlobalJson(workingDirectory, projectFilePath);
-        }
+
+        // Pin the SDK via global.json for every build, including Publish/AOT. When Publish was
+        // skipped, an AOT build inherited a stale per-TFM global.json left in the shared test-case
+        // directory by another TFM's host (e.g. 8.0.100), rolling forward to an SDK that cannot
+        // target the requested framework (NETSDK1045).
+        WriteCurrentFrameworkGlobalJson(workingDirectory, projectFilePath);
 
         using StreamWriter logWriter = new(File.Open(
             logFilePath, FileMode.Create, FileAccess.Write, FileShare.Read));
@@ -213,22 +215,19 @@ internal static class TestBuilder
             WorkingDirectory = workingDirectory,
         };
 
-        // Prevent nested dotnet invocations from inheriting the current host path from the
-        // parent dotnet process, which can cause host/runtime mismatches when SDK selection
-        // rolls forward to a newer major version.
-        if (Environment.Version.Major != 4)
-        {
-            startInfo.Environment.Remove("MSBuildSDKsPath");
-            startInfo.Environment.Remove("DOTNET_HOST_PATH");
-            startInfo.Environment.Remove("DOTNET_ROOT");
-            startInfo.Environment.Remove("DOTNET_ROOT(x86)");
-            startInfo.Environment.Remove("DOTNET_ROOT_X86");
-            startInfo.Environment.Remove("DOTNET_ROOT(x64)");
-            startInfo.Environment.Remove("DOTNET_ROOT_X64");
-            startInfo.Environment.Remove("DOTNET_MSBUILD_SDK_RESOLVER_CLI_DIR");
-            startInfo.Environment.Remove("DOTNET_MSBUILD_SDK_RESOLVER_SDKS_DIR");
-            startInfo.Environment.Remove("DOTNET_MSBUILD_SDK_RESOLVER_SDKS_VER");
-        }
+        // Nested dotnet invocations must not inherit the parent's host/SDK resolver environment,
+        // or SDK roll-forward to a newer major version causes host/runtime mismatches. A .NET
+        // Framework (net472) test host inherits these from the outer `dotnet test` as well.
+        startInfo.Environment.Remove("MSBuildSDKsPath");
+        startInfo.Environment.Remove("DOTNET_HOST_PATH");
+        startInfo.Environment.Remove("DOTNET_ROOT");
+        startInfo.Environment.Remove("DOTNET_ROOT(x86)");
+        startInfo.Environment.Remove("DOTNET_ROOT_X86");
+        startInfo.Environment.Remove("DOTNET_ROOT(x64)");
+        startInfo.Environment.Remove("DOTNET_ROOT_X64");
+        startInfo.Environment.Remove("DOTNET_MSBUILD_SDK_RESOLVER_CLI_DIR");
+        startInfo.Environment.Remove("DOTNET_MSBUILD_SDK_RESOLVER_SDKS_DIR");
+        startInfo.Environment.Remove("DOTNET_MSBUILD_SDK_RESOLVER_SDKS_VER");
 
         logWriter.WriteLine($"dotnet {startInfo.Arguments}");
         logWriter.WriteLine($"CWD={workingDirectory}");
