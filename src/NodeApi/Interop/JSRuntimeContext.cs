@@ -126,6 +126,13 @@ public sealed class JSRuntimeContext : IDisposable
         }
     }
 
+    /// <summary>
+    /// Gets the environment handle without checking whether the context is disposed. For use
+    /// only where a checked access is unnecessary, such as capturing the env to release a
+    /// reference on the JS thread (where a disposed context makes the release a safe no-op).
+    /// </summary>
+    internal napi_env UncheckedEnvironmentHandle => _env;
+
     public static explicit operator napi_env(JSRuntimeContext context)
     {
         if (context is null) throw new ArgumentNullException(nameof(context));

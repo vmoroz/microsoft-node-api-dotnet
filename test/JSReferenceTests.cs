@@ -114,23 +114,17 @@ public class JSReferenceTests
         Assert.False(reference.TryGetValue(out _));
     }
 
-    // A reference created from a NoContext scope (as the native host does) has a null runtime
-    // context, so its finalizer takes the branch that previously asserted thread access. The GC
-    // finalizer runs on a thread with no JS scope, so that assertion threw
-    // JSInvalidThreadAccessException out of the finalizer, which terminates the process (the
-    // reported worker-teardown crash). The finalizer must instead complete without throwing.
+    // A reference must have a runtime context. NoContext scopes -- used only by the native host,
+    // which now uses JSHostReference -- cannot create a JSReference: construction throws instead
+    // of yielding a context-less reference, which was the source of the worker-teardown crash
+    // class (the finalizer of a context-less reference asserted thread access off the JS thread).
     [Fact]
-    public void FinalizeNoContextReferenceFromDifferentThreadDoesNotThrow()
+    public void CreateReferenceInNoContextScopeThrows()
     {
         using JSValueScope noContextScope = TestScope(JSValueScopeType.NoContext);
 
         JSValue value = JSValue.CreateObject();
-        var reference = new FinalizerTestReference(value);
-
-        // Run on a new thread that has no current scope, simulating the GC finalizer thread.
-        TestUtils.RunInThread(() => reference.SimulateFinalize()).Wait();
-
-        Assert.True(reference.IsDisposed);
+        Assert.Throws<InvalidOperationException>(() => new JSReference(value));
     }
 
     // A reference with a runtime context posts its cleanup to the JS thread instead of deleting it
@@ -158,22 +152,6 @@ public class JSReferenceTests
         // Pumping the sync context runs the posted delete, releasing the native reference.
         Assert.Equal(1, syncContext.RunPendingCallbacks());
         Assert.False(_mockRuntime.HasReference(handle));
-    }
-
-    // Explicit disposal (disposing: true) preserves the documented behavior of asserting thread
-    // access for a no-context reference; only the finalizer path is made non-throwing.
-    [Fact]
-    public void DisposeNoContextReferenceFromDifferentThreadThrows()
-    {
-        using JSValueScope noContextScope = TestScope(JSValueScopeType.NoContext);
-
-        JSValue value = JSValue.CreateObject();
-        JSReference reference = new(value);
-
-        TestUtils.RunInThread(() =>
-        {
-            Assert.Throws<JSInvalidThreadAccessException>(() => reference.Dispose());
-        }).Wait();
     }
 
     // The finalizer invokes the virtual Dispose(bool), so a derived override can throw before or

@@ -29,7 +29,7 @@ internal unsafe partial class NativeHost : IDisposable
     private ICLRRuntimeHost* _runtimeHost;
     private hostfxr_handle _hostContextHandle;
     private readonly JSValueScope _hostScope;
-    private JSReference? _exports;
+    private JSHostReference? _exports;
 
     public static bool IsTracingEnabled { get; } =
         Environment.GetEnvironmentVariable("NODE_API_TRACE_HOST") == "1";
@@ -292,7 +292,7 @@ internal unsafe partial class NativeHost : IDisposable
             // Save init parameters and result in case of re-init.
             _targetFramework = targetFramework;
             _managedHostPath = managedHostPath;
-            _exports = new JSReference(exports);
+            _exports = new JSHostReference(exports);
             return exports;
         }
         catch (Exception ex)
