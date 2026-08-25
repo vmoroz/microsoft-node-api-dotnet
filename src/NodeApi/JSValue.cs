@@ -194,9 +194,7 @@ public readonly struct JSValue : IJSValue<JSValue>
             new JSCallbackDescriptor(name, callback, callbackData));
         JSValue func = CreateFunction(
             name,
-            new napi_callback(
-                JSValueScope.Current?.ScopeType == JSValueScopeType.NoContext ?
-                s_invokeJSCallbackNC : s_invokeJSCallback),
+            new napi_callback(s_invokeJSCallback),
             (nint)descriptorHandle);
         func.AddGCHandleFinalizer((nint)descriptorHandle);
         return func;
@@ -801,9 +799,7 @@ public readonly struct JSValue : IJSValue<JSValue>
     {
         GCHandle descriptorHandle = JSRuntimeContext.Current.AllocGCHandle(constructorDescriptor);
         JSValue? func = null;
-        napi_callback callback = new(
-            Current?.ScopeType == JSValueScopeType.NoContext
-            ? s_invokeJSCallbackNC : s_invokeJSCallback);
+        napi_callback callback = new(s_invokeJSCallback);
 
         nint[] handles = ToUnmanagedPropertyDescriptors(
             name, propertyDescriptors, (name, descriptorsPtr) =>
@@ -1218,10 +1214,6 @@ public readonly struct JSValue : IJSValue<JSValue>
     internal static readonly napi_callback.Delegate s_invokeJSMethod = InvokeJSMethod;
     internal static readonly napi_callback.Delegate s_invokeJSGetter = InvokeJSGetter;
     internal static readonly napi_callback.Delegate s_invokeJSSetter = InvokeJSSetter;
-    internal static readonly napi_callback.Delegate s_invokeJSCallbackNC = InvokeJSCallbackNoContext;
-    internal static readonly napi_callback.Delegate s_invokeJSMethodNC = InvokeJSMethodNoContext;
-    internal static readonly napi_callback.Delegate s_invokeJSGetterNC = InvokeJSGetterNoContext;
-    internal static readonly napi_callback.Delegate s_invokeJSSetterNC = InvokeJSSetterNoContext;
 
     internal static readonly napi_finalize.Delegate s_finalizeGCHandle = FinalizeGCHandle;
     internal static readonly napi_finalize.Delegate s_finalizeGCHandleToDisposable = FinalizeGCHandleToDisposable;
@@ -1236,14 +1228,6 @@ public readonly struct JSValue : IJSValue<JSValue>
         <napi_env, napi_callback_info, napi_value> s_invokeJSGetter = &InvokeJSGetter;
     internal static readonly unsafe delegate* unmanaged[Cdecl]
         <napi_env, napi_callback_info, napi_value> s_invokeJSSetter = &InvokeJSSetter;
-    internal static readonly unsafe delegate* unmanaged[Cdecl]
-        <napi_env, napi_callback_info, napi_value> s_invokeJSCallbackNC = &InvokeJSCallbackNoContext;
-    internal static readonly unsafe delegate* unmanaged[Cdecl]
-        <napi_env, napi_callback_info, napi_value> s_invokeJSMethodNC = &InvokeJSMethodNoContext;
-    internal static readonly unsafe delegate* unmanaged[Cdecl]
-        <napi_env, napi_callback_info, napi_value> s_invokeJSGetterNC = &InvokeJSGetterNoContext;
-    internal static readonly unsafe delegate* unmanaged[Cdecl]
-        <napi_env, napi_callback_info, napi_value> s_invokeJSSetterNC = &InvokeJSSetterNoContext;
 
     internal static readonly unsafe delegate* unmanaged[Cdecl]
         <napi_env, nint, nint, void> s_finalizeGCHandle = &FinalizeGCHandle;
@@ -1298,55 +1282,6 @@ public readonly struct JSValue : IJSValue<JSValue>
     {
         return InvokeCallback<JSPropertyDescriptor>(
             env, callbackInfo, JSValueScopeType.Callback, (propertyDescriptor) => new(
-                propertyDescriptor.Name,
-                propertyDescriptor.Setter!,
-                propertyDescriptor.Data,
-                propertyDescriptor.ModuleContext));
-    }
-
-#if UNMANAGED_DELEGATES
-    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
-#endif
-    internal static unsafe napi_value InvokeJSCallbackNoContext(
-        napi_env env, napi_callback_info callbackInfo)
-    {
-        return InvokeCallback<JSCallbackDescriptor>(
-            env, callbackInfo, JSValueScopeType.NoContext, (descriptor) => descriptor);
-    }
-
-#if UNMANAGED_DELEGATES
-    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
-#endif
-    private static unsafe napi_value InvokeJSMethodNoContext(napi_env env, napi_callback_info callbackInfo)
-    {
-        return InvokeCallback<JSPropertyDescriptor>(
-            env, callbackInfo, JSValueScopeType.NoContext, (propertyDescriptor) => new(
-                propertyDescriptor.Name,
-                propertyDescriptor.Method!,
-                propertyDescriptor.Data,
-                propertyDescriptor.ModuleContext));
-    }
-
-#if UNMANAGED_DELEGATES
-    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
-#endif
-    private static unsafe napi_value InvokeJSGetterNoContext(napi_env env, napi_callback_info callbackInfo)
-    {
-        return InvokeCallback<JSPropertyDescriptor>(
-            env, callbackInfo, JSValueScopeType.NoContext, (propertyDescriptor) => new(
-                propertyDescriptor.Name,
-                propertyDescriptor.Getter!,
-                propertyDescriptor.Data,
-                propertyDescriptor.ModuleContext));
-    }
-
-#if UNMANAGED_DELEGATES
-    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
-#endif
-    private static napi_value InvokeJSSetterNoContext(napi_env env, napi_callback_info callbackInfo)
-    {
-        return InvokeCallback<JSPropertyDescriptor>(
-            env, callbackInfo, JSValueScopeType.NoContext, (propertyDescriptor) => new(
                 propertyDescriptor.Name,
                 propertyDescriptor.Setter!,
                 propertyDescriptor.Data,
@@ -1654,22 +1589,9 @@ public readonly struct JSValue : IJSValue<JSValue>
         IReadOnlyCollection<JSPropertyDescriptor> descriptors,
         UseUnmanagedDescriptors action)
     {
-        napi_callback methodCallback;
-        napi_callback getterCallback;
-        napi_callback setterCallback;
-        if (JSValueScope.Current?.ScopeType == JSValueScopeType.NoContext)
-        {
-            // The NativeHost and ManagedHost set up callbacks without a current module context.
-            methodCallback = new napi_callback(s_invokeJSMethodNC);
-            getterCallback = new napi_callback(s_invokeJSGetterNC);
-            setterCallback = new napi_callback(s_invokeJSSetterNC);
-        }
-        else
-        {
-            methodCallback = new napi_callback(s_invokeJSMethod);
-            getterCallback = new napi_callback(s_invokeJSGetter);
-            setterCallback = new napi_callback(s_invokeJSSetter);
-        }
+        napi_callback methodCallback = new(s_invokeJSMethod);
+        napi_callback getterCallback = new(s_invokeJSGetter);
+        napi_callback setterCallback = new(s_invokeJSSetter);
 
         nint[] handlesToFinalize = new nint[descriptors.Count];
         int count = descriptors.Count;

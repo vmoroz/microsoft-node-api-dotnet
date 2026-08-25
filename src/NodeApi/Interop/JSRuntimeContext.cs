@@ -159,13 +159,21 @@ public sealed class JSRuntimeContext : IDisposable
     internal JSRuntimeContext(
         napi_env env,
         JSRuntime runtime,
-        JSSynchronizationContext? synchronizationContext = null)
+        JSSynchronizationContext? synchronizationContext = null,
+        bool setInstanceData = true)
     {
         if (env.IsNull) throw new ArgumentNullException(nameof(env));
 
         _env = env;
         Runtime = runtime;
-        JSValue.SetInstanceData(env, this);
+
+        // The native host owns the single instance-data slot itself (to receive the env-teardown
+        // finalizer), so its host context opts out of claiming the slot here.
+        if (setInstanceData)
+        {
+            JSValue.SetInstanceData(env, this);
+        }
+
         SynchronizationContext = synchronizationContext ?? JSSynchronizationContext.Create();
     }
 

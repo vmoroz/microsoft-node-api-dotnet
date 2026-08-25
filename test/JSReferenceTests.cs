@@ -114,19 +114,6 @@ public class JSReferenceTests
         Assert.False(reference.TryGetValue(out _));
     }
 
-    // A reference must have a runtime context. NoContext scopes -- used only by the native host,
-    // which uses JSHostReference -- cannot create a JSReference: construction throws instead of
-    // yielding a context-less reference, the source of the worker-teardown crash class (a
-    // context-less reference's finalizer asserted thread access off the JS thread).
-    [Fact]
-    public void CreateReferenceInNoContextScopeThrows()
-    {
-        using JSValueScope noContextScope = TestScope(JSValueScopeType.NoContext);
-
-        JSValue value = JSValue.CreateObject();
-        Assert.Throws<InvalidOperationException>(() => new JSReference(value));
-    }
-
     // A reference with a runtime context posts its cleanup to the JS thread instead of deleting it
     // inline. The finalizer must never throw when it runs on a thread with no current scope, and
     // the posted delete must actually release the native reference once the JS thread pumps it.

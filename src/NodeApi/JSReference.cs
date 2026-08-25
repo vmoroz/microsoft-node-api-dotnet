@@ -63,15 +63,6 @@ public class JSReference : IDisposable
     {
         JSValueScope currentScope = JSValueScope.Current;
 
-        // A reference must have a runtime context: only the context knows when the napi_env
-        // (and therefore this napi_ref) is gone. NoContext scopes -- used only by the native
-        // host -- have no context and must use JSHostReference instead.
-        if (currentScope.ScopeType == JSValueScopeType.NoContext)
-        {
-            throw new InvalidOperationException(
-                "A JSReference cannot be created in a scope without a runtime context.");
-        }
-
         // Thread access to the env will be checked on reference handle use.
         _handle = handle;
         _context = currentScope.RuntimeContext;
