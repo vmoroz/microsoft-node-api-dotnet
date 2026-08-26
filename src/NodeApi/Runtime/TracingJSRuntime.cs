@@ -377,12 +377,24 @@ public class TracingJSRuntime : JSRuntime
         <napi_env, napi_callback_info, napi_value> s_traceSetterCallback = &TraceSetterCallback;
 #endif
 
+    // Like InvokeCallback (which these replace when tracing is on), tolerate a parentless thread
+    // by recovering the context from env instance data when no scope is current.
+    private static JSValueScope CreateCallbackScope(napi_env env)
+    {
+        JSRuntimeContext? parentlessContext = JSValueScope.CurrentOrNull is null
+            ? JSRuntimeContext.FromEnv(env)
+            : null;
+        return parentlessContext is not null
+            ? new JSValueScope(JSValueScopeType.Callback, parentlessContext)
+            : new JSValueScope(JSValueScopeType.Callback);
+    }
+
 #if UNMANAGED_DELEGATES
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
 #endif
     private static unsafe napi_value TraceFunctionCallback(napi_env env, napi_callback_info cbinfo)
     {
-        using var scope = new JSValueScope(JSValueScopeType.Callback);
+        using var scope = CreateCallbackScope(env);
         return ((TracingJSRuntime)scope.Runtime).TraceCallback<JSCallbackDescriptor>(
             scope, cbinfo, (descriptor) => descriptor);
     }
@@ -392,7 +404,7 @@ public class TracingJSRuntime : JSRuntime
 #endif
     private static unsafe napi_value TraceMethodCallback(napi_env env, napi_callback_info cbinfo)
     {
-        using var scope = new JSValueScope(JSValueScopeType.Callback);
+        using var scope = CreateCallbackScope(env);
         return ((TracingJSRuntime)scope.Runtime).TraceCallback<JSPropertyDescriptor>(
             scope, cbinfo, (propertyDescriptor) => new(
                 propertyDescriptor.Name,
@@ -406,7 +418,7 @@ public class TracingJSRuntime : JSRuntime
 #endif
     private static unsafe napi_value TraceGetterCallback(napi_env env, napi_callback_info cbinfo)
     {
-        using var scope = new JSValueScope(JSValueScopeType.Callback);
+        using var scope = CreateCallbackScope(env);
         return ((TracingJSRuntime)scope.Runtime).TraceCallback<JSPropertyDescriptor>(
             scope, cbinfo, (propertyDescriptor) => new(
                 propertyDescriptor.Name,
@@ -420,7 +432,7 @@ public class TracingJSRuntime : JSRuntime
 #endif
     private static unsafe napi_value TraceSetterCallback(napi_env env, napi_callback_info cbinfo)
     {
-        using var scope = new JSValueScope(JSValueScopeType.Callback);
+        using var scope = CreateCallbackScope(env);
         return ((TracingJSRuntime)scope.Runtime).TraceCallback<JSPropertyDescriptor>(
             scope, cbinfo, (propertyDescriptor) => new(
                 propertyDescriptor.Name,
