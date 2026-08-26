@@ -26,9 +26,7 @@ public class JSModuleBuilder<T> : JSPropertyDescriptorList<JSModuleBuilder<T>, T
     /// Exports the built properties to the module exports object.
     /// </summary>
     /// <param name="module">An object that represents the module instance and is
-    /// used as the 'this' argument for any non-static methods on the module. If the object
-    /// implements <see cref="IDisposable"/> then it is also registered for disposal when
-    /// the module is unloaded.</param>
+    /// used as the 'this' argument for any non-static methods on the module.</param>
     /// <param name="exports">Object to be returned from the module initializer.</param>
     /// <returns>The module exports.</returns>
     public JSValue ExportModule(T module, JSObject exports)

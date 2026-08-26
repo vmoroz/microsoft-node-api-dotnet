@@ -9,8 +9,8 @@ namespace Microsoft.JavaScript.NodeApi.Interop;
 /// Manages JavaScript interop context for the lifetime of a .NET module.
 /// </summary>
 /// <remarks>
-/// A <see cref="JSModuleContext"/> instance is constructed when the module is loaded and disposed
-/// when the module is unloaded.
+/// A <see cref="JSModuleContext"/> instance is constructed when the module is loaded. It is
+/// captured by the module's callback descriptors and lives as long as they do.
 /// </remarks>
 public sealed class JSModuleContext : IDisposable
 {

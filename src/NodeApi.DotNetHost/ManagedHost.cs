@@ -40,7 +40,7 @@ public sealed class ManagedHost : JSEventEmitter, IDisposable
     private readonly AssemblyLoadContext _loadContext = new(name: default);
 #endif
 
-    private JSValueScope? _rootScope;
+    private JSRuntimeContext? _context;
 
     /// <summary>
     /// Component that dynamically exports types from loaded assemblies.
@@ -207,7 +207,7 @@ public sealed class ManagedHost : JSEventEmitter, IDisposable
         // environment teardown, so the managed context is a non-owner: it writes its own slot but
         // does not claim the finalizer, and is disposed via the registration notification below.
         bool hosted = registration != null;
-        JSValueScope scope = new(
+        using JSValueScope scope = new(
             JSValueScopeType.Root, env, runtime, synchronizationContext: null);
 
         try
@@ -229,7 +229,7 @@ public sealed class ManagedHost : JSEventEmitter, IDisposable
 
             ManagedHost host = new(exportsObject)
             {
-                _rootScope = scope
+                _context = scope.RuntimeContext
             };
 
             if (hosted)
@@ -310,9 +310,9 @@ public sealed class ManagedHost : JSEventEmitter, IDisposable
     /// </summary>
     private void DisposeOnEnvironmentFinalize()
     {
-        JSValueScope? rootScope = _rootScope;
-        _rootScope = null;
-        rootScope?.RuntimeContext.Dispose();
+        JSRuntimeContext? context = _context;
+        _context = null;
+        context?.Dispose();
     }
 
     /// <summary>
@@ -669,8 +669,8 @@ public sealed class ManagedHost : JSEventEmitter, IDisposable
     {
         if (disposing)
         {
-            _rootScope?.Dispose();
-            _rootScope = null;
+            _context?.Dispose();
+            _context = null;
 
 #if NETFRAMEWORK || NETSTANDARD
             AppDomain.CurrentDomain.AssemblyResolve -= OnResolvingAssembly;
