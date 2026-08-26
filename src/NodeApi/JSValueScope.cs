@@ -325,8 +325,55 @@ public sealed class JSValueScope : IDisposable
                 // Unparented scopes initialize a new runtime context.
                 RuntimeContext = new JSRuntimeContext(
                     env, Runtime, synchronizationContext, setInstanceData);
-                RuntimeContextHandle = (nint)GCHandle.Alloc(RuntimeContext);
+                RuntimeContextHandle = RuntimeContext.ContextHandle;
             }
+
+            if (scopeType == JSValueScopeType.Root || scopeType == JSValueScopeType.Callback)
+            {
+                _previousSyncContext = SynchronizationContext.Current;
+                SynchronizationContext.SetSynchronizationContext(
+                    RuntimeContext.SynchronizationContext);
+            }
+        }
+        catch (Exception)
+        {
+            CurrentOrNull = previousScope;
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Creates a transient scope that adopts an existing <see cref="JSRuntimeContext"/> instead of
+    /// creating a new one, to dispatch a callback when there is no parent scope on the current
+    /// thread. The context is typically recovered from env instance data via
+    /// <see cref="JSRuntimeContext.FromEnv"/>.
+    /// </summary>
+    internal JSValueScope(JSValueScopeType scopeType, JSRuntimeContext context)
+    {
+        ScopeType = scopeType;
+        _parentScope = null;
+        _env = context.UncheckedEnvironmentHandle;
+        ThreadId = Environment.CurrentManagedThreadId;
+        Runtime = context.Runtime;
+
+        _scopeHandle = ScopeType switch
+        {
+            JSValueScopeType.Handle
+                => Runtime.OpenHandleScope(_env, out napi_handle_scope handleScope)
+                   .ThrowIfFailed(handleScope).Handle,
+            JSValueScopeType.Escapable
+                => Runtime.OpenEscapableHandleScope(
+                    _env, out napi_escapable_handle_scope handleScope)
+                   .ThrowIfFailed(handleScope).Handle,
+            _ => default,
+        };
+
+        JSValueScope? previousScope = CurrentOrNull;
+        try
+        {
+            CurrentOrNull = this;
+            RuntimeContext = context;
+            RuntimeContextHandle = context.ContextHandle;
 
             if (scopeType == JSValueScopeType.Root || scopeType == JSValueScopeType.Callback)
             {

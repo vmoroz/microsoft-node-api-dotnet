@@ -1159,36 +1159,6 @@ public readonly struct JSValue : IJSValue<JSValue>
                 (napi_key_conversion)conversion,
                 out napi_value result).ThrowIfFailed(result);
 
-    //TODO: (vmoroz) What env parameter does here?
-    //TODO: (vmoroz) Move instance data to somewhere else. It must be not in the public API
-    internal static unsafe void SetInstanceData(napi_env env, object? data)
-    {
-        JSRuntime runtime = CurrentRuntime;
-        runtime.GetInstanceData(env, out nint handlePtr).ThrowIfFailed();
-        if (handlePtr != default)
-        {
-            // Current napi_set_instance_data implementation does not call finalizer when we replace existing instance data.
-            // It means that we only remove the GC root, but do not call Dispose.
-            GCHandle.FromIntPtr(handlePtr).Free();
-        }
-
-        if (data != null)
-        {
-            GCHandle handle = GCHandle.Alloc(data);
-            runtime.SetInstanceData(
-              env,
-              (nint)handle,
-              new napi_finalize(s_finalizeGCHandleToDisposable),
-              finalizeHint: default).ThrowIfFailed();
-        }
-    }
-
-    internal static object? GetInstanceData(napi_env env)
-    {
-        CurrentRuntime.GetInstanceData(env, out nint data).ThrowIfFailed();
-        return (data != default) ? GCHandle.FromIntPtr(data).Target : null;
-    }
-
     public void DetachArrayBuffer() => GetRuntime(out napi_env env, out napi_value handle)
         .DetachArrayBuffer(env, handle).ThrowIfFailed();
 
@@ -1294,7 +1264,15 @@ public readonly struct JSValue : IJSValue<JSValue>
         JSValueScopeType scopeType,
         Func<TDescriptor, JSCallbackDescriptor> getCallbackDescriptor)
     {
-        using var scope = new JSValueScope(scopeType, env, runtime: default);
+        // A callback normally inherits its context from the parent scope on the thread-static
+        // stack. When there is none (the native host dispatches initialize/dispose with no
+        // persistent scope), recover the context from env instance data and adopt it.
+        JSRuntimeContext? parentlessContext = JSValueScope.CurrentOrNull is null
+            ? JSRuntimeContext.FromEnv(env)
+            : null;
+        using var scope = parentlessContext is not null
+            ? new JSValueScope(scopeType, parentlessContext)
+            : new JSValueScope(scopeType, env, runtime: default);
         try
         {
             JSCallbackArgs.GetDataAndLength(scope, callbackInfo, out object? data, out int length);

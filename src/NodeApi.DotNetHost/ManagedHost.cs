@@ -202,12 +202,13 @@ public sealed class ManagedHost : JSEventEmitter, IDisposable
             runtime = new TracingJSRuntime(runtime, trace);
         }
 
-        // When hosted, the native host owns the single environment instance-data slot (its
-        // finalizer signals environment teardown), so this context must not claim the slot. The
-        // native host is instead notified through the registration struct filled in below.
+        // The managed host registers its context in the environment instance-data block (at the
+        // module slot). When hosted, the native host owns that block and its finalizer signals
+        // environment teardown, so the managed context is a non-owner: it writes its own slot but
+        // does not claim the finalizer, and is disposed via the registration notification below.
         bool hosted = registration != null;
         JSValueScope scope = new(
-            JSValueScopeType.Root, env, runtime, synchronizationContext: null, setInstanceData: !hosted);
+            JSValueScopeType.Root, env, runtime, synchronizationContext: null, setInstanceData: true);
 
         try
         {

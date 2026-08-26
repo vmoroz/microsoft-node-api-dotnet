@@ -350,11 +350,19 @@ public class JSReference : IDisposable
             return;
         }
 
+        // Once the context is disposed its napi_env was torn down and Node already reclaimed every
+        // napi_ref, so there is nothing to delete and touching the env would be unsafe. This single
+        // flag invalidates all references at once, for both the explicit and finalizer paths.
+        if (_context.IsDisposed)
+        {
+            IsDisposed = true;
+            return;
+        }
+
         IsDisposed = true;
 
-        // Capture from the context without a disposed-check: if the context is already disposed
-        // (its napi_env was torn down) the posted delete becomes a safe no-op, because the
-        // napi_ref was already released along with the environment.
+        // The guard above handles an already-disposed context; if it is disposed concurrently after
+        // that check, the posted delete is still a safe no-op (the napi_ref went with the env).
         napi_env env = _context.UncheckedEnvironmentHandle;
         napi_ref handle = _handle;
         JSRuntime runtime = _context.Runtime;
