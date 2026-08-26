@@ -1335,7 +1335,7 @@ public readonly struct JSValue : IJSValue<JSValue>
         {
             // TODO: [vmoroz] In future we will be not allowed to run JS in finalizers.
             // We must remove creation of the scope.
-            using var scope = new JSValueScope(JSValueScopeType.Callback);
+            using var scope = new JSValueScope(JSValueScopeType.Callback, context);
             ((Action)gcHandle.Target!)();
         }
         finally

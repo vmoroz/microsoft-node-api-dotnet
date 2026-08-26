@@ -265,7 +265,14 @@ public class JSThreadSafeFunction
 
         try
         {
-            using JSValueScope scope = new(JSValueScopeType.Callback, env, runtime: null);
+            // Dispatched on the JS thread with no parent scope when the target module keeps
+            // none (e.g. an AOT module); recover the context from env instance data and adopt it.
+            JSRuntimeContext? parentlessContext = JSValueScope.CurrentOrNull is null
+                ? JSRuntimeContext.FromEnv(env)
+                : null;
+            using JSValueScope scope = parentlessContext is not null
+                ? new JSValueScope(JSValueScopeType.Callback, parentlessContext)
+                : new JSValueScope(JSValueScopeType.Callback, env, runtime: null);
 
             if (data != default)
             {
