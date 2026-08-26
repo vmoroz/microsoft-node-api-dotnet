@@ -208,7 +208,7 @@ public sealed class ManagedHost : JSEventEmitter, IDisposable
         // does not claim the finalizer, and is disposed via the registration notification below.
         bool hosted = registration != null;
         JSValueScope scope = new(
-            JSValueScopeType.Root, env, runtime, synchronizationContext: null, setInstanceData: true);
+            JSValueScopeType.Root, env, runtime, synchronizationContext: null);
 
         try
         {

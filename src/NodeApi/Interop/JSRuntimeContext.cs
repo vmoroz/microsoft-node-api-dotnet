@@ -121,11 +121,14 @@ public sealed class JSRuntimeContext : IDisposable
     // Env instance-data layout: one GCHandle slot per runtime sharing the napi_env. Slot 0 is the
     // module context (managed host / AOT module / embedding); slot 1 is the native host context.
     // A runtime reads and writes only its own slot, so it never dereferences the other runtime's
-    // GCHandle (which belongs to a separate GC heap). The native host sets InstanceDataSlot to 1.
-    internal const int ModuleContextSlot = 0;
-    internal const int HostContextSlot = 1;
+    // GCHandle (which belongs to a separate GC heap).
+    private const int ModuleContextSlot = 0;
+    private const int HostContextSlot = 1;
     private const int InstanceDataSlotCount = 2;
-    internal static int InstanceDataSlot = ModuleContextSlot;
+
+    // This runtime's slot in the instance-data block: the module slot by default, or the host slot
+    // once the native host calls UseHostContextSlot() at startup.
+    private static int s_instanceDataSlot = ModuleContextSlot;
 
     // The runtime used to read env instance data in FromEnv, captured when a context registers.
     private static JSRuntime? s_instanceDataRuntime;
@@ -187,11 +190,17 @@ public sealed class JSRuntimeContext : IDisposable
             return null;
         }
 
-        nint slotHandle = ((nint*)instanceData)[InstanceDataSlot];
+        nint slotHandle = ((nint*)instanceData)[s_instanceDataSlot];
         return slotHandle == default
             ? null
             : GCHandle.FromIntPtr(slotHandle).Target as JSRuntimeContext;
     }
+
+    /// <summary>
+    /// Configures the calling runtime to use the native host's instance-data slot. Called once by
+    /// the native host at startup; every other runtime keeps the default module slot.
+    /// </summary>
+    internal static void UseHostContextSlot() => s_instanceDataSlot = HostContextSlot;
 
     public bool IsDisposed { get; private set; }
 
@@ -209,19 +218,14 @@ public sealed class JSRuntimeContext : IDisposable
     internal JSRuntimeContext(
         napi_env env,
         JSRuntime runtime,
-        JSSynchronizationContext? synchronizationContext = null,
-        bool setInstanceData = true)
+        JSSynchronizationContext? synchronizationContext = null)
     {
         if (env.IsNull) throw new ArgumentNullException(nameof(env));
 
         _env = env;
         Runtime = runtime;
         _contextHandle = (nint)GCHandle.Alloc(this);
-
-        if (setInstanceData)
-        {
-            RegisterInstanceData(env, runtime);
-        }
+        RegisterInstanceData(env, runtime);
 
         SynchronizationContext = synchronizationContext ?? JSSynchronizationContext.Create();
     }
@@ -250,7 +254,7 @@ public sealed class JSRuntimeContext : IDisposable
                 finalizeHint: default).ThrowIfFailed();
         }
 
-        ((nint*)instanceData)[InstanceDataSlot] = _contextHandle;
+        ((nint*)instanceData)[s_instanceDataSlot] = _contextHandle;
     }
 
 #if !UNMANAGED_DELEGATES
@@ -268,7 +272,7 @@ public sealed class JSRuntimeContext : IDisposable
         // Runs during env teardown, where calling into JS is forbidden. Dispose the owning
         // runtime's context and free the shared block. Only this runtime's slot is read (never the
         // other runtime's); the slot GCHandles are intentionally left rooted (see _contextHandle).
-        nint slotHandle = ((nint*)data)[InstanceDataSlot];
+        nint slotHandle = ((nint*)data)[s_instanceDataSlot];
         if (slotHandle != default)
         {
             try

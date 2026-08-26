@@ -1186,7 +1186,6 @@ public readonly struct JSValue : IJSValue<JSValue>
     internal static readonly napi_callback.Delegate s_invokeJSSetter = InvokeJSSetter;
 
     internal static readonly napi_finalize.Delegate s_finalizeGCHandle = FinalizeGCHandle;
-    internal static readonly napi_finalize.Delegate s_finalizeGCHandleToDisposable = FinalizeGCHandleToDisposable;
     internal static readonly napi_finalize.Delegate s_finalizeGCHandleToPinnedMemory = FinalizeGCHandleToPinnedMemory;
     internal static readonly napi_finalize.Delegate s_callFinalizeAction = CallFinalizeAction;
 #else
@@ -1201,8 +1200,6 @@ public readonly struct JSValue : IJSValue<JSValue>
 
     internal static readonly unsafe delegate* unmanaged[Cdecl]
         <napi_env, nint, nint, void> s_finalizeGCHandle = &FinalizeGCHandle;
-    internal static readonly unsafe delegate* unmanaged[Cdecl]
-        <napi_env, nint, nint, void> s_finalizeGCHandleToDisposable = &FinalizeGCHandleToDisposable;
     internal static readonly unsafe delegate* unmanaged[Cdecl]
         <napi_env, nint, nint, void> s_finalizeGCHandleToPinnedMemory = &FinalizeGCHandleToPinnedMemory;
     internal static readonly unsafe delegate* unmanaged[Cdecl]
@@ -1304,31 +1301,6 @@ public readonly struct JSValue : IJSValue<JSValue>
         else
         {
             handle.Free();
-        }
-    }
-
-#if UNMANAGED_DELEGATES
-    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
-#endif
-    internal static unsafe void FinalizeGCHandleToDisposable(napi_env env, nint data, nint hint)
-    {
-        GCHandle handle = GCHandle.FromIntPtr(data);
-        try
-        {
-            (handle.Target as IDisposable)?.Dispose();
-        }
-        finally
-        {
-            if (hint != default)
-            {
-                GCHandle contextHandle = GCHandle.FromIntPtr(hint);
-                JSRuntimeContext context = (JSRuntimeContext)contextHandle.Target!;
-                context.FreeGCHandle(handle);
-            }
-            else
-            {
-                handle.Free();
-            }
         }
     }
 

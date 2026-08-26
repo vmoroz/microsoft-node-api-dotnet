@@ -29,7 +29,6 @@ internal unsafe partial class NativeHost : IDisposable
     private string? _managedHostPath;
     private ICLRRuntimeHost* _runtimeHost;
     private hostfxr_handle _hostContextHandle;
-    private readonly JSRuntimeContext _context;
     private JSReference? _exports;
 
     // Filled in by the managed host during initialization via the registration struct: a GCHandle
@@ -201,9 +200,9 @@ internal unsafe partial class NativeHost : IDisposable
 
         s_jsRuntime ??= new NodejsRuntime();
 
-        // The native host's context occupies instance-data slot 1, so the initialize()/dispose()
-        // callbacks (dispatched later with no parent scope) recover it via JSRuntimeContext.FromEnv.
-        JSRuntimeContext.InstanceDataSlot = JSRuntimeContext.HostContextSlot;
+        // The native host's context occupies the host instance-data slot, so the initialize()/
+        // dispose() callbacks (dispatched later with no parent scope) recover it via FromEnv.
+        JSRuntimeContext.UseHostContextSlot();
 
         // Transient Root scope (inline, non-TSFN sync context), opened before the try so the catch
         // can still build a JSValue error. The host context outlives it -- rooted by its
@@ -214,7 +213,7 @@ internal unsafe partial class NativeHost : IDisposable
         {
             JSRuntimeContext context = hostScope.RuntimeContext;
 
-            NativeHost host = new(context);
+            NativeHost host = new();
             context.SetDisposableAnnotation(host);
 
             new JSValue(exports, hostScope).DefineProperties(
@@ -232,11 +231,6 @@ internal unsafe partial class NativeHost : IDisposable
         Trace("< NativeHost.InitializeModule()");
 
         return exports;
-    }
-
-    private NativeHost(JSRuntimeContext context)
-    {
-        _context = context;
     }
 
     [StructLayout(LayoutKind.Sequential)]

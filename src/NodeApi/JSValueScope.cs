@@ -168,23 +168,6 @@ public sealed class JSValueScope : IDisposable
         napi_env env,
         JSRuntime? runtime,
         JSSynchronizationContext? synchronizationContext = null)
-        : this(scopeType, env, runtime, synchronizationContext, setInstanceData: true)
-    {
-    }
-
-    /// <summary>
-    /// Creates a new instance of a <see cref="JSValueScope"/>, with control over whether the
-    /// runtime context claims the environment's single instance-data slot.
-    /// </summary>
-    /// <param name="setInstanceData">False to skip setting the runtime context as the
-    /// environment instance data. Used by the native host, which owns the instance-data slot
-    /// itself so its finalizer signals environment teardown.</param>
-    internal JSValueScope(
-        JSValueScopeType scopeType,
-        napi_env env,
-        JSRuntime? runtime,
-        JSSynchronizationContext? synchronizationContext,
-        bool setInstanceData)
     {
         ScopeType = scopeType;
 
@@ -324,7 +307,7 @@ public sealed class JSValueScope : IDisposable
             {
                 // Unparented scopes initialize a new runtime context.
                 RuntimeContext = new JSRuntimeContext(
-                    env, Runtime, synchronizationContext, setInstanceData);
+                    env, Runtime, synchronizationContext);
                 RuntimeContextHandle = RuntimeContext.ContextHandle;
             }
 
