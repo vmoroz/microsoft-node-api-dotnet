@@ -19,7 +19,7 @@ public class JSModuleBuilder<T> : JSPropertyDescriptorList<JSModuleBuilder<T>, T
 
     private static new T? Unwrap(JSCallbackArgs _)
     {
-        return (T?)JSModuleContext.Current.Module;
+        return (T?)JSValueScope.Current.Module;
     }
 
     /// <summary>
@@ -31,7 +31,9 @@ public class JSModuleBuilder<T> : JSPropertyDescriptorList<JSModuleBuilder<T>, T
     /// <returns>The module exports.</returns>
     public JSValue ExportModule(T module, JSObject exports)
     {
-        JSModuleContext.Current.Module = module;
+        // Write through the holder the descriptors captured, so callbacks bound before the module
+        // instance existed observe it.
+        JSValueScope.Current.ModuleHolder!.Value = module;
         exports.DefineProperties(Properties.ToArray());
         return exports;
     }

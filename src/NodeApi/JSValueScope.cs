@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 using System;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Microsoft.JavaScript.NodeApi.Interop;
@@ -17,7 +18,7 @@ public enum JSValueScopeType
 {
     /// <summary>
     /// A parent scope shared by all (non-AOT) .NET modules loaded in the same process. It has
-    /// a <see cref="JSRuntimeContext" /> but no <see cref="JSModuleContext" />.
+    /// a <see cref="JSRuntimeContext" /> but no module instance.
     /// </summary>
     /// <remarks>
     /// AOT modules do not have any root scope, so each module scope has a separate
@@ -27,7 +28,7 @@ public enum JSValueScopeType
 
     /// <summary>
     /// A scope specific to each module. It inherits the <see cref="JSRuntimeContext" /> from the root
-    /// scope, and has a unique <see cref="JSModuleContext" />.
+    /// scope, and has a unique module instance.
     /// </summary>
     /// <remarks>
     /// AOT modules do not have any root scope, so each module also has a separate
@@ -140,7 +141,18 @@ public sealed class JSValueScope : IDisposable
     internal static JSRuntime CurrentRuntime => Current.Runtime;
     internal static JSRuntimeContext? CurrentRuntimeContext => CurrentOrNull?.RuntimeContext;
 
-    public JSModuleContext? ModuleContext { get; internal set; }
+    /// <summary>
+    /// Holds the instance of the module class for the current module. It is a shared mutable cell
+    /// so callback descriptors can capture it during initialization, before the module instance
+    /// exists, and observe the instance once it is assigned.
+    /// </summary>
+    internal StrongBox<object?>? ModuleHolder { get; set; }
+
+    /// <summary>
+    /// Gets the instance of the module class for the current module, used as the 'this' argument
+    /// for module-level instance members, or null if there is no module class.
+    /// </summary>
+    public object? Module => ModuleHolder?.Value;
 
     /// <summary>
     /// Creates a new instance of a <see cref="JSValueScope"/> with a specified scope type.
@@ -267,16 +279,16 @@ public sealed class JSValueScope : IDisposable
 
             if (scopeType == JSValueScopeType.Module)
             {
-                if (_parentScope?.ModuleContext != null)
+                if (_parentScope?.ModuleHolder != null)
                 {
                     throw new InvalidOperationException("Module scope cannot be nested.");
                 }
 
-                ModuleContext = new JSModuleContext();
+                ModuleHolder = new StrongBox<object?>();
             }
             else
             {
-                ModuleContext = _parentScope!.ModuleContext;
+                ModuleHolder = _parentScope!.ModuleHolder;
             }
         }
 

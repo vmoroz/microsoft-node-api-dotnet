@@ -1226,7 +1226,7 @@ public readonly struct JSValue : IJSValue<JSValue>
                 propertyDescriptor.Name,
                 propertyDescriptor.Method!,
                 propertyDescriptor.Data,
-                propertyDescriptor.ModuleContext));
+                propertyDescriptor.ModuleHolder));
     }
 
 #if UNMANAGED_DELEGATES
@@ -1239,7 +1239,7 @@ public readonly struct JSValue : IJSValue<JSValue>
                 propertyDescriptor.Name,
                 propertyDescriptor.Getter!,
                 propertyDescriptor.Data,
-                propertyDescriptor.ModuleContext));
+                propertyDescriptor.ModuleHolder));
     }
 
 #if UNMANAGED_DELEGATES
@@ -1252,7 +1252,7 @@ public readonly struct JSValue : IJSValue<JSValue>
                 propertyDescriptor.Name,
                 propertyDescriptor.Setter!,
                 propertyDescriptor.Data,
-                propertyDescriptor.ModuleContext));
+                propertyDescriptor.ModuleHolder));
     }
 
     private static unsafe napi_value InvokeCallback<TDescriptor>(
@@ -1275,7 +1275,7 @@ public readonly struct JSValue : IJSValue<JSValue>
             JSCallbackArgs.GetDataAndLength(scope, callbackInfo, out object? data, out int length);
             Span<napi_value> args = stackalloc napi_value[length];
             JSCallbackDescriptor descriptor = getCallbackDescriptor((TDescriptor)data!);
-            scope.ModuleContext = descriptor.ModuleContext;
+            scope.ModuleHolder = descriptor.ModuleHolder;
             return (napi_value)descriptor.Callback(
                 new JSCallbackArgs(scope, callbackInfo, args, descriptor.Data));
         }

@@ -410,7 +410,7 @@ public class TracingJSRuntime : JSRuntime
                 propertyDescriptor.Name,
                 propertyDescriptor.Method!,
                 propertyDescriptor.Data,
-                propertyDescriptor.ModuleContext));
+                propertyDescriptor.ModuleHolder));
     }
 
 #if UNMANAGED_DELEGATES
@@ -424,7 +424,7 @@ public class TracingJSRuntime : JSRuntime
                 propertyDescriptor.Name,
                 propertyDescriptor.Getter!,
                 propertyDescriptor.Data,
-                propertyDescriptor.ModuleContext));
+                propertyDescriptor.ModuleHolder));
     }
 
 #if UNMANAGED_DELEGATES
@@ -438,7 +438,7 @@ public class TracingJSRuntime : JSRuntime
                 propertyDescriptor.Name,
                 propertyDescriptor.Setter!,
                 propertyDescriptor.Data,
-                propertyDescriptor.ModuleContext));
+                propertyDescriptor.ModuleHolder));
     }
 
     /// <summary>
