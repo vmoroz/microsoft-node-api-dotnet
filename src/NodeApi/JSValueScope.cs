@@ -169,16 +169,7 @@ public sealed class JSValueScope : IDisposable
         ScopeType = JSValueScopeType.RuntimeContext;
         _parentScope = CurrentOrNull;
 
-        if (context != null)
-        {
-            // An explicit context is a root boundary (host, AOT module, or embedding).
-            if (!env.IsNull && env != context.UncheckedEnvironmentHandle)
-            {
-                throw new ArgumentException(
-                    "Environment does not match the runtime context.", nameof(env));
-            }
-        }
-        else
+        if (context == null)
         {
             // Inherit the parent scope's context, else recover it from the env instance data.
             context = _parentScope?.RuntimeContext
@@ -187,10 +178,24 @@ public sealed class JSValueScope : IDisposable
                     "A runtime context could not be resolved for the scope.");
         }
 
+        // A supplied env must match the resolved context — whether passed explicitly (a root
+        // boundary: host, AOT module, or embedding) or inherited from the parent — otherwise this
+        // scope would wrap handles from a different environment.
+        if (!env.IsNull && env != context.UncheckedEnvironmentHandle)
+        {
+            throw new ArgumentException(
+                "Environment does not match the runtime context.", nameof(env));
+        }
+
         _env = context.UncheckedEnvironmentHandle;
         ThreadId = Environment.CurrentManagedThreadId;
         Runtime = context.Runtime;
-        ModuleHolder = new StrongBox<object?>();
+
+        // A nested runtime scope that continues the parent's context inherits its module holder;
+        // only a root/module boundary (a new or explicitly-provided context) starts a fresh one.
+        ModuleHolder = _parentScope?.RuntimeContext == context
+            ? _parentScope.ModuleHolder
+            : new StrongBox<object?>();
 
         JSValueScope? previousScope = CurrentOrNull;
         try

@@ -232,6 +232,11 @@ public sealed class ManagedHost : JSEventEmitter, IDisposable
                 _context = context
             };
 
+            // Dispose the host with its environment: as a disposable annotation on the context, the
+            // host's full Dispose (which unsubscribes the process-wide resolve handlers) runs when
+            // the context is disposed at environment teardown. Mirrors the native host.
+            context.SetDisposableAnnotation(host);
+
             if (hosted)
             {
                 // Root the managed host for the environment lifetime and give the native host a
@@ -303,10 +308,11 @@ public sealed class ManagedHost : JSEventEmitter, IDisposable
     }
 
     /// <summary>
-    /// Disposes the runtime context in response to environment teardown. No JavaScript may be
-    /// called here; disposing the context marks it disposed (so any late cross-thread post becomes
-    /// a no-op) and frees its GC handles. The context's references are reclaimed by Node as the
-    /// environment is torn down.
+    /// Disposes the managed host in response to environment teardown. No JavaScript may be called
+    /// here; disposing the context marks it disposed (so any late cross-thread post becomes a
+    /// no-op), disposes the host (a disposable annotation on the context) so its process-wide
+    /// resolve handlers are unsubscribed, and frees the context's GC handles. The context's
+    /// references are reclaimed by Node as the environment is torn down.
     /// </summary>
     private void DisposeOnEnvironmentFinalize()
     {
@@ -665,10 +671,18 @@ public sealed class ManagedHost : JSEventEmitter, IDisposable
         }
     }
 
+    private bool _isDisposed;
+
     protected override void Dispose(bool disposing)
     {
+        if (_isDisposed) return;
+        _isDisposed = true;
+
         if (disposing)
         {
+            // The context disposes this host (a disposable annotation) at teardown, so the
+            // re-entrant context dispose here is a guarded no-op. Unsubscribe the process-wide
+            // resolve handlers so a torn-down environment's host is not left rooted by them.
             _context?.Dispose();
             _context = null;
 
@@ -677,7 +691,12 @@ public sealed class ManagedHost : JSEventEmitter, IDisposable
 #else
             AssemblyLoadContext.Default.Resolving -= OnResolvingAssembly;
             _loadContext.Resolving -= OnResolvingAssembly;
-            _loadContext.Unload();
+
+            // A non-collectible load context cannot be unloaded; only unload one created collectible.
+            if (_loadContext.IsCollectible)
+            {
+                _loadContext.Unload();
+            }
 #endif
         }
 

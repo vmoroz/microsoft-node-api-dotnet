@@ -448,6 +448,9 @@ public class TracingJSRuntime : JSRuntime
             throw new InvalidOperationException("Callback data is null."));
         JSCallbackDescriptor descriptor = getCallbackDescriptor(data);
 
+        // Mirror InvokeCallback: make the module instance available to module-level members.
+        scope.ModuleHolder = descriptor.ModuleHolder;
+
         Span<napi_value> argsSpan = stackalloc napi_value[length];
         JSCallbackArgs args = new(scope, cbinfo, argsSpan, descriptor.Data);
 

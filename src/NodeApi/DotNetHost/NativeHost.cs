@@ -548,9 +548,11 @@ internal unsafe partial class NativeHost : IDisposable
     {
         // Called by the host context when the environment is torn down (the NativeHost is a
         // disposable annotation on that context). Runs during environment finalization, where
-        // calling into JS is forbidden, so it only notifies the managed host (a native call) and
-        // drops the exports reference; the exports napi_ref is reclaimed by Node as the env dies.
+        // calling into JS is forbidden. Notify the managed host (a native call), then close this
+        // environment's CLR host, and drop the exports reference; the exports napi_ref is reclaimed
+        // by Node as the env dies.
         NotifyManagedHostEnvironmentFinalize();
+        CloseRuntimeHost();
         _addonGCHandle = default;
         _onEnvFinalize = default;
         _exports = null;
@@ -558,9 +560,10 @@ internal unsafe partial class NativeHost : IDisposable
 
     private void CloseRuntimeHost()
     {
-        // Closes the CLR host context handle / releases the .NET Framework runtime host. This is
-        // process/runtime-level teardown, separate from environment teardown, invoked only by the
-        // optional JS dispose() hook.
+        // Closes this environment's CLR host: the hostfxr context handle (.NET 5+) or the
+        // ICLRRuntimeHost COM reference (.NET Framework). Each environment initializes its own, so
+        // this is per-environment teardown (the underlying shared CLR is not unloaded). Invoked at
+        // environment teardown and by the optional JS dispose() hook; idempotent.
 
         // Close the CLR host context handle, if it's still open.
         if (_hostContextHandle != default)

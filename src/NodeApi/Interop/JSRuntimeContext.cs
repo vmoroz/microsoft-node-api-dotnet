@@ -883,7 +883,10 @@ public sealed class JSRuntimeContext : IDisposable
 
         IsDisposed = true;
 
-        SynchronizationContext.Dispose();
+        // Dispose an already-created sync context only; never construct one here. Disposal can run
+        // during env finalization when no scope is current, and creating a sync context then would
+        // throw and skip the rest of teardown.
+        _synchronizationContext?.Dispose();
 
 #if !(NETFRAMEWORK || NETSTANDARD)
         // ConditionalWeakTable<> is not enumerable in .NET Framework.
