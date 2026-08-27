@@ -20,7 +20,7 @@ public sealed class NodeEmbeddingNodeApiScope : IDisposable
         NodeEmbedding.JSRuntime.EmbeddingRuntimeOpenNodeApiScope(
             runtime.Handle, out _nodeApiScope, out napi_env env)
             .ThrowIfFailed();
-        JSRuntimeContext context = new(env, NodeEmbedding.JSRuntime);
+        JSRuntimeContext context = NodeEmbedding.GetOrCreateContext(env);
         _valueScope = JSValueScope.CreateRuntimeScope(env, context);
     }
 

@@ -353,6 +353,13 @@ public sealed class NodeEmbedding
         }
     }
 
+    // The embedding invokes these adapters (and opens Node-API scopes) repeatedly for the same
+    // env; reuse the env's registered context to keep one context per env, instead of leaking a new
+    // context and overwriting the instance-data slot on each call. The instance-data finalizer
+    // disposes the context at env teardown.
+    internal static JSRuntimeContext GetOrCreateContext(napi_env env)
+        => JSRuntimeContext.FromEnv(env) ?? new JSRuntimeContext(env, JSRuntime);
+
 #if UNMANAGED_DELEGATES
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
 #endif
@@ -363,7 +370,7 @@ public sealed class NodeEmbedding
         napi_value process,
         napi_value require)
     {
-        JSRuntimeContext context = new(env, JSRuntime);
+        JSRuntimeContext context = GetOrCreateContext(env);
         using var jsValueScope = JSValueScope.CreateRuntimeScope(env, context);
         try
         {
@@ -388,7 +395,7 @@ public sealed class NodeEmbedding
         napi_value require,
         napi_value run_cjs)
     {
-        JSRuntimeContext context = new(env, JSRuntime);
+        JSRuntimeContext context = GetOrCreateContext(env);
         using var jsValueScope = JSValueScope.CreateRuntimeScope(env, context);
         try
         {
@@ -413,7 +420,7 @@ public sealed class NodeEmbedding
         napi_env env,
         napi_value loading_result)
     {
-        JSRuntimeContext context = new(env, JSRuntime);
+        JSRuntimeContext context = GetOrCreateContext(env);
         using var jsValueScope = JSValueScope.CreateRuntimeScope(env, context);
         try
         {
@@ -437,7 +444,7 @@ public sealed class NodeEmbedding
         nint module_name,
         napi_value exports)
     {
-        JSRuntimeContext context = new(env, JSRuntime);
+        JSRuntimeContext context = GetOrCreateContext(env);
         using var jsValueScope = JSValueScope.CreateRuntimeScope(env, context);
         try
         {
@@ -506,7 +513,7 @@ public sealed class NodeEmbedding
 #endif
     internal static unsafe void NodeApiRunCallbackAdapter(nint cb_data, napi_env env)
     {
-        JSRuntimeContext context = new(env, JSRuntime);
+        JSRuntimeContext context = GetOrCreateContext(env);
         using var jsValueScope = JSValueScope.CreateRuntimeScope(env, context);
         try
         {
