@@ -169,14 +169,11 @@ public sealed class JSValueScope : IDisposable
         ScopeType = JSValueScopeType.RuntimeContext;
         _parentScope = CurrentOrNull;
 
-        if (context == null)
-        {
-            // Inherit the parent scope's context, else recover it from the env instance data.
-            context = _parentScope?.RuntimeContext
-                ?? JSRuntimeContext.FromEnv(env)
-                ?? throw new InvalidOperationException(
-                    "A runtime context could not be resolved for the scope.");
-        }
+        // Inherit the parent scope's context, else recover it from the env instance data.
+        context ??= _parentScope?.RuntimeContext
+            ?? JSRuntimeContext.FromEnv(env)
+            ?? throw new InvalidOperationException(
+                "A runtime context could not be resolved for the scope.");
 
         // A supplied env must match the resolved context — whether passed explicitly (a root
         // boundary: host, AOT module, or embedding) or inherited from the parent — otherwise this
