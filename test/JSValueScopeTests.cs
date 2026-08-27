@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 using System;
+using System.Runtime.CompilerServices;
 using Microsoft.JavaScript.NodeApi.Interop;
 using Xunit;
 using static Microsoft.JavaScript.NodeApi.Runtime.JSRuntime;
@@ -193,5 +194,118 @@ public class JSValueScopeTests
             Assert.Equal(rootScope2, ex.CurrentScope);
             Assert.Equal(rootScope1, ex.TargetScope);
         }).Wait();
+    }
+
+    // The module instance is captured through a shared holder: descriptors take the holder during
+    // initialization (before the instance exists) and observe the instance once dispatch assigns it.
+    // Nested handle/escapable scopes inherit the same holder, so Current.Module round-trips through it.
+    [Fact]
+    public void ModuleInstanceRoundTripsThroughSharedHolder()
+    {
+        using JSValueScope runtimeScope = TestRuntimeScope();
+
+        // The runtime scope mints a holder; the module instance is not assigned yet.
+        StrongBox<object?> holder = JSValueScope.Current.ModuleHolder!;
+        Assert.NotNull(holder);
+        Assert.Null(JSValueScope.Current.Module);
+
+        var moduleInstance = new object();
+        using (JSValueScope handleScope = JSValueScope.CreateHandleScope())
+        {
+            // Inner scopes inherit the same holder instance.
+            Assert.Same(holder, JSValueScope.Current.ModuleHolder);
+
+            // Assigning through the shared holder (as dispatch does) is visible as Current.Module.
+            holder.Value = moduleInstance;
+            Assert.Same(moduleInstance, JSValueScope.Current.Module);
+        }
+
+        // The instance remains visible in the parent scope after the nested scope closes.
+        Assert.Same(moduleInstance, JSValueScope.Current.Module);
+    }
+
+    // An escapable scope promotes one value to its parent so the value stays usable after the inner
+    // scope closes, while a value that was not escaped becomes invalid once the scope is disposed.
+    [Fact]
+    public void EscapableScopeEscapesValue()
+    {
+        using JSValueScope rootScope = TestRuntimeScope();
+
+        JSValue escaped;
+        JSValue notEscaped;
+        JSValueScope escapableScope;
+        using (escapableScope = JSValueScope.CreateEscapableScope())
+        {
+            notEscaped = JSValue.CreateObject();
+            escaped = escapableScope.Escape(JSValue.CreateObject());
+
+            Assert.True(escaped.IsObject());
+            Assert.True(notEscaped.IsObject());
+        }
+
+        // The escaped value was promoted to the parent scope, so it remains usable.
+        Assert.True(escapableScope.IsDisposed);
+        Assert.True(escaped.IsObject());
+
+        // The value that was not escaped belonged to the now-closed scope.
+        JSValueScopeClosedException ex = Assert.Throws<JSValueScopeClosedException>(
+            () => notEscaped.IsObject());
+        Assert.Equal(escapableScope, ex.Scope);
+    }
+
+    // With no explicit context and no parent scope, CreateRuntimeScope recovers the context from the
+    // env instance data (JSRuntimeContext.FromEnv) -- the path the dynamic module entry point relies
+    // on to resolve the context when no scope is on the thread yet.
+    [Fact]
+    public void CreateRuntimeScopeResolvesContextFromEnv()
+    {
+        napi_env env = new(Environment.CurrentManagedThreadId);
+        var context = new JSRuntimeContext(
+            env, _mockRuntime, new MockJSRuntime.SynchronizationContext());
+
+        // The context registered itself in the env instance data, so FromEnv resolves it.
+        Assert.Same(context, JSRuntimeContext.FromEnv(env));
+
+        using JSValueScope runtimeScope = JSValueScope.CreateRuntimeScope(env);
+        Assert.Same(context, runtimeScope.RuntimeContext);
+        Assert.Same(context, JSValueScope.Current.RuntimeContext);
+    }
+
+    // JSRuntimeContext.Create is the public factory used by AOT entry points and embedders. It uses
+    // the provided runtime, and a runtime scope over the context resolves it as the current context.
+    [Fact]
+    public void CreateRuntimeContextFactoryUsesProvidedRuntime()
+    {
+        napi_env env = new(Environment.CurrentManagedThreadId);
+        JSRuntimeContext context = JSRuntimeContext.Create(
+            env, _mockRuntime, new MockJSRuntime.SynchronizationContext());
+
+        Assert.Same(_mockRuntime, context.Runtime);
+        Assert.False(context.IsDisposed);
+
+        using JSValueScope runtimeScope = JSValueScope.CreateRuntimeScope(env, context);
+        Assert.Same(context, JSValueScope.Current.RuntimeContext);
+        Assert.Same(context, JSRuntimeContext.Current);
+    }
+
+    // A runtime-context scope installs the context's synchronization context as the thread's current
+    // one for its lifetime (so await continuations marshal back to the JS thread) and restores the
+    // previously-current one when disposed.
+    [Fact]
+    public void RuntimeScopeInstallsAndRestoresSynchronizationContext()
+    {
+        System.Threading.SynchronizationContext? previous =
+            System.Threading.SynchronizationContext.Current;
+
+        napi_env env = new(Environment.CurrentManagedThreadId);
+        var syncContext = new MockJSRuntime.SynchronizationContext();
+        var context = new JSRuntimeContext(env, _mockRuntime, syncContext);
+
+        using (JSValueScope runtimeScope = JSValueScope.CreateRuntimeScope(env, context))
+        {
+            Assert.Same(syncContext, System.Threading.SynchronizationContext.Current);
+        }
+
+        Assert.Same(previous, System.Threading.SynchronizationContext.Current);
     }
 }

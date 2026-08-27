@@ -141,6 +141,33 @@ public class JSReferenceTests
         Assert.False(_mockRuntime.HasReference(handle));
     }
 
+    // Explicit Dispose() from a thread with no current scope must not throw. The pre-refactor
+    // no-context path asserted thread access and threw JSInvalidThreadAccessException here; every
+    // reference is now context-backed, so the delete is posted to the JS thread instead.
+    [Fact]
+    public void DisposeReferenceFromDifferentThreadPostsDelete()
+    {
+        var syncContext = new MockJSRuntime.RecordingSynchronizationContext();
+        using JSValueScope rootScope = TestScope(syncContext);
+
+        JSValue value = JSValue.CreateObject();
+        var reference = new JSReference(value);
+        napi_ref handle = reference.Handle;
+        Assert.True(_mockRuntime.HasReference(handle));
+
+        TestUtils.RunInThread(() => reference.Dispose()).Wait();
+
+        Assert.True(reference.IsDisposed);
+
+        // The delete is deferred to the JS thread, not run inline on the disposing thread.
+        Assert.True(_mockRuntime.HasReference(handle));
+        Assert.Equal(1, syncContext.PendingCount);
+
+        // Pumping the sync context runs the posted delete, releasing the native reference.
+        Assert.Equal(1, syncContext.RunPendingCallbacks());
+        Assert.False(_mockRuntime.HasReference(handle));
+    }
+
     // The finalizer invokes the virtual Dispose(bool), so a derived override can throw before or
     // after the base implementation runs. ~JSReference() must catch at its entry point, otherwise
     // the exception escapes the finalizer and terminates the process. This drives real GC
