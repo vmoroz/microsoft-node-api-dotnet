@@ -34,8 +34,10 @@ public sealed class ManagedHost : JSEventEmitter, IDisposable
 
 #if !(NETFRAMEWORK || NETSTANDARD)
     /// <summary>
-    /// Each instance of a managed host uses a separate assembly load context.
-    /// That way, static data is not shared across multiple host instances.
+    /// Each instance of a managed host uses a separate assembly load context, so static data is not
+    /// shared across host instances. It is not collectible: JSInterfaceMarshaller emits interface
+    /// adapter types with Reflection.Emit, which a collectible load context does not support, so the
+    /// context cannot be unloaded at teardown (only its resolve handlers are unsubscribed).
     /// </summary>
     private readonly AssemblyLoadContext _loadContext = new(name: default);
 #endif

@@ -128,12 +128,14 @@ public sealed class JSRuntimeContext : IDisposable
     // once the native host calls UseHostContextSlot() at startup.
     private static int s_instanceDataSlot = ModuleContextSlot;
 
-    // The runtime used to read env instance data in FromEnv, captured when a context registers.
+    // The runtime used to read env instance data in FromEnv, captured when a context registers. A
+    // JSRuntime is a stateless dispatch v-table, so any registered runtime can read any env's
+    // instance data; the process-wide static is intentional and safe.
     private static JSRuntime? s_instanceDataRuntime;
 
-    // A GCHandle rooting this context, used both as its env instance-data slot value and as the
-    // finalize hint for pooled GC handles. It is intentionally never freed: pooled-handle
-    // finalizers dereference it during env teardown, after this context is already disposed.
+    // A GCHandle rooting this context, used as its env instance-data slot value. It is freed when
+    // the context is disposed at env teardown; wrapped-object finalizers resolve the context via
+    // FromEnv(env) rather than this handle, so freeing it leaves no dangling finalize hint.
 
     internal napi_env EnvironmentHandle
     {
@@ -291,8 +293,11 @@ public sealed class JSRuntimeContext : IDisposable
     private static unsafe void FinalizeInstanceData(napi_env env, nint data, nint hint)
     {
         // Runs during env teardown, where calling into JS is forbidden. Dispose the owning
-        // runtime's context and free the shared block. Only this runtime's slot is read (never the
-        // other runtime's); the slot GCHandles are intentionally left rooted (see _contextHandle).
+        // runtime's context (which clears its slot and frees its rooting GCHandle). Only this
+        // runtime's slot is read, never the other runtime's (whose GCHandle belongs to a separate
+        // GC heap). The block is intentionally not freed: a wrapped-object finalizer may still run
+        // after this and resolve the context via FromEnv, which reads this block; a freed block
+        // would be a use-after-free, whereas a cleared slot safely resolves to no context.
         nint slotHandle = ((nint*)data)[s_instanceDataSlot];
         if (slotHandle != default)
         {
@@ -305,8 +310,6 @@ public sealed class JSRuntimeContext : IDisposable
                 // A finalizer must never throw; teardown continues regardless.
             }
         }
-
-        Marshal.FreeHGlobal(data);
     }
 
     /// <summary>
@@ -911,6 +914,24 @@ public sealed class JSRuntimeContext : IDisposable
                     // A failing annotation must not prevent the rest of teardown.
                 }
             }
+        }
+
+        // Remove this context's root so it can be collected: clear its instance-data slot (a late
+        // wrapped-object finalizer then resolves no context via FromEnv and frees only its own
+        // handle) and free the rooting GCHandle. The block is left allocated (see
+        // FinalizeInstanceData) so a late FromEnv reads a cleared slot rather than freed memory.
+        if (ContextHandle != default)
+        {
+            Runtime.GetInstanceData(UncheckedEnvironmentHandle, out nint instanceData);
+            if (instanceData != default)
+            {
+                unsafe
+                {
+                    ((nint*)instanceData)[s_instanceDataSlot] = default;
+                }
+            }
+
+            GCHandle.FromIntPtr(ContextHandle).Free();
         }
     }
 

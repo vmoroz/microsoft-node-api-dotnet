@@ -228,7 +228,7 @@ public readonly struct JSValue : IJSValue<JSValue>
             currentScope.UncheckedEnvironmentHandle,
             (nint)valueHandle,
             new napi_finalize(s_finalizeGCHandle),
-            currentScope.RuntimeContextHandle,
+            default,
             out napi_value result)
             .ThrowIfFailed(result);
     }
@@ -825,7 +825,7 @@ public readonly struct JSValue : IJSValue<JSValue>
             handle,
             (nint)valueHandle,
             new napi_finalize(s_finalizeGCHandle),
-            _scope!.RuntimeContextHandle).ThrowIfFailed();
+            default).ThrowIfFailed();
         return this;
     }
 
@@ -844,7 +844,7 @@ public readonly struct JSValue : IJSValue<JSValue>
             handle,
             (nint)valueHandle,
             new napi_finalize(s_finalizeGCHandle),
-            _scope!.RuntimeContextHandle,
+            default,
             out napi_ref weakRef).ThrowIfFailed();
         wrapperWeakRef = new JSReference(weakRef, isWeak: true);
         return this;
@@ -1092,7 +1092,7 @@ public readonly struct JSValue : IJSValue<JSValue>
             handle,
             (nint)finalizeHandle,
             new napi_finalize(s_callFinalizeAction),
-            _scope!.RuntimeContextHandle).ThrowIfFailed();
+            default).ThrowIfFailed();
     }
 
     public unsafe void AddFinalizer(Action finalize, out JSReference finalizerRef)
@@ -1104,7 +1104,7 @@ public readonly struct JSValue : IJSValue<JSValue>
             handle,
             (nint)finalizeHandle,
             new napi_finalize(s_callFinalizeAction),
-            _scope!.RuntimeContextHandle,
+            default,
             out napi_ref reference).ThrowIfFailed();
         finalizerRef = new JSReference(reference, isWeak: true);
     }
@@ -1284,11 +1284,13 @@ public readonly struct JSValue : IJSValue<JSValue>
 #endif
     internal static unsafe void FinalizeGCHandle(napi_env env, nint data, nint hint)
     {
+        // Resolve the context from the env rather than a finalize hint, so the context's rooting
+        // GCHandle can be freed at teardown. A null/disposed context means teardown already ran;
+        // just free the wrapped object's handle.
         GCHandle handle = GCHandle.FromIntPtr(data);
-        if (hint != default)
+        JSRuntimeContext? context = JSRuntimeContext.FromEnv(env);
+        if (context != null && !context.IsDisposed)
         {
-            GCHandle contextHandle = GCHandle.FromIntPtr(hint);
-            JSRuntimeContext context = (JSRuntimeContext)contextHandle.Target!;
             context.FreeGCHandle(handle);
         }
         else
@@ -1321,19 +1323,29 @@ public readonly struct JSValue : IJSValue<JSValue>
 #endif
     private static unsafe void CallFinalizeAction(napi_env env, nint data, nint hint)
     {
+        // Resolve the context from the env rather than a finalize hint (see FinalizeGCHandle).
         GCHandle gcHandle = GCHandle.FromIntPtr(data);
-        GCHandle contextHandle = GCHandle.FromIntPtr(hint);
-        JSRuntimeContext context = (JSRuntimeContext)contextHandle.Target!;
+        JSRuntimeContext? context = JSRuntimeContext.FromEnv(env);
         try
         {
-            // TODO: [vmoroz] In future we will be not allowed to run JS in finalizers.
-            // We must remove creation of the scope.
-            using var scope = JSValueScope.CreateRuntimeScope(env, context);
-            ((Action)gcHandle.Target!)();
+            if (context != null && !context.IsDisposed)
+            {
+                // TODO: [vmoroz] In future we will be not allowed to run JS in finalizers.
+                // We must remove creation of the scope.
+                using var scope = JSValueScope.CreateRuntimeScope(env, context);
+                ((Action)gcHandle.Target!)();
+            }
         }
         finally
         {
-            context.FreeGCHandle(gcHandle);
+            if (context != null && !context.IsDisposed)
+            {
+                context.FreeGCHandle(gcHandle);
+            }
+            else
+            {
+                gcHandle.Free();
+            }
         }
     }
 
@@ -1483,7 +1495,7 @@ public readonly struct JSValue : IJSValue<JSValue>
                 handle,
                 finalizeData,
                 new napi_finalize(s_finalizeGCHandle),
-                Scope.RuntimeContextHandle).ThrowIfFailed();
+                default).ThrowIfFailed();
         }
     }
 

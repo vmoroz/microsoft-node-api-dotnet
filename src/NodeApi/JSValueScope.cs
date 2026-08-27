@@ -119,7 +119,6 @@ public sealed class JSValueScope : IDisposable
 
     public JSRuntime Runtime { get; }
     public JSRuntimeContext RuntimeContext { get; }
-    internal nint RuntimeContextHandle { get; }
 
     internal static JSRuntime CurrentRuntime => Current.Runtime;
     internal static JSRuntimeContext? CurrentRuntimeContext => CurrentOrNull?.RuntimeContext;
@@ -199,7 +198,6 @@ public sealed class JSValueScope : IDisposable
         {
             CurrentOrNull = this;
             RuntimeContext = context;
-            RuntimeContextHandle = context.ContextHandle;
 
             _previousSyncContext = SynchronizationContext.Current;
             SynchronizationContext.SetSynchronizationContext(context.SynchronizationContext);
@@ -250,7 +248,6 @@ public sealed class JSValueScope : IDisposable
         {
             CurrentOrNull = this;
             RuntimeContext = _parentScope.RuntimeContext;
-            RuntimeContextHandle = _parentScope.RuntimeContextHandle;
         }
         catch (Exception)
         {
