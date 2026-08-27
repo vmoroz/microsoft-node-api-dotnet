@@ -9,6 +9,7 @@ using System.IO;
 using System.Runtime.CompilerServices;
 #endif
 using System.Runtime.InteropServices;
+using Microsoft.JavaScript.NodeApi.Interop;
 
 using static JSRuntime;
 using static NodejsRuntime;
@@ -362,7 +363,8 @@ public sealed class NodeEmbedding
         napi_value process,
         napi_value require)
     {
-        using var jsValueScope = new JSValueScope(JSValueScopeType.Root, env, JSRuntime);
+        JSRuntimeContext context = new(env, JSRuntime);
+        using var jsValueScope = JSValueScope.CreateRuntimeScope(env, context);
         try
         {
             var callback = (PreloadCallback)GCHandle.FromIntPtr(cb_data).Target!;
@@ -386,7 +388,8 @@ public sealed class NodeEmbedding
         napi_value require,
         napi_value run_cjs)
     {
-        using var jsValueScope = new JSValueScope(JSValueScopeType.Root, env, JSRuntime);
+        JSRuntimeContext context = new(env, JSRuntime);
+        using var jsValueScope = JSValueScope.CreateRuntimeScope(env, context);
         try
         {
             var callback = (LoadingCallback)GCHandle.FromIntPtr(cb_data).Target!;
@@ -410,7 +413,8 @@ public sealed class NodeEmbedding
         napi_env env,
         napi_value loading_result)
     {
-        using var jsValueScope = new JSValueScope(JSValueScopeType.Root, env, JSRuntime);
+        JSRuntimeContext context = new(env, JSRuntime);
+        using var jsValueScope = JSValueScope.CreateRuntimeScope(env, context);
         try
         {
             var callback = (LoadedCallback)GCHandle.FromIntPtr(cb_data).Target!;
@@ -433,7 +437,8 @@ public sealed class NodeEmbedding
         nint module_name,
         napi_value exports)
     {
-        using var jsValueScope = new JSValueScope(JSValueScopeType.Root, env, JSRuntime);
+        JSRuntimeContext context = new(env, JSRuntime);
+        using var jsValueScope = JSValueScope.CreateRuntimeScope(env, context);
         try
         {
             var callback = (InitializeModuleCallback)GCHandle.FromIntPtr(cb_data).Target!;
@@ -501,7 +506,8 @@ public sealed class NodeEmbedding
 #endif
     internal static unsafe void NodeApiRunCallbackAdapter(nint cb_data, napi_env env)
     {
-        using var jsValueScope = new JSValueScope(JSValueScopeType.Root, env, JSRuntime);
+        JSRuntimeContext context = new(env, JSRuntime);
+        using var jsValueScope = JSValueScope.CreateRuntimeScope(env, context);
         try
         {
             var callback = (RunNodeApiCallback)GCHandle.FromIntPtr(cb_data).Target!;

@@ -24,6 +24,7 @@ public class ModuleGenerator : SourceGenerator, ISourceGenerator
 {
     private const string ModuleInitializerClassName = "Module";
     private const string ModuleInitializeMethodName = "Initialize";
+    private const string ModuleExportsMethodName = "InitializeExports";
     private const string ModuleRegisterFunctionName = "napi_register_module_v1";
 
     private readonly JSMarshaller _marshaller = new()
@@ -287,22 +288,32 @@ public class ModuleGenerator : SourceGenerator, ISourceGenerator
         s += $"public static class {ModuleInitializerClassName}";
         s += "{";
 
-        // The unmanaged entrypoint is used only when the AOT-compiled module is loaded.
+        // The unmanaged entrypoint is used only when the AOT-compiled module is loaded. As the
+        // root it creates the runtime context; there is no host to resolve it from.
         s += "#if !NETFRAMEWORK";
         s += $"[UnmanagedCallersOnly(EntryPoint = \"{ModuleRegisterFunctionName}\")]";
         s += $"public static napi_value _{ModuleInitializeMethodName}(napi_env env, napi_value exports)";
-        s += $"{s.Indent}=> {ModuleInitializeMethodName}(env, exports);";
+        s += "{";
+        s += "JSRuntimeContext context = JSRuntimeContext.Create(env);";
+        s += "using var moduleScope = JSValueScope.CreateRuntimeScope(env, context);";
+        s += $"return {ModuleExportsMethodName}(moduleScope, exports);";
+        s += "}";
         s += "#endif";
         s++;
 
-        // The main initialization entrypoint is called by the `ManagedHost`, and by the unmanaged entrypoint.
+        // The main initialization entrypoint is called by the `ManagedHost` that loaded this
+        // module; the scope resolves the runtime context from that host.
         s += $"public static napi_value {ModuleInitializeMethodName}(napi_env env, napi_value exports)";
         s += "{";
+        s += "using var moduleScope = JSValueScope.CreateRuntimeScope(env);";
+        s += $"return {ModuleExportsMethodName}(moduleScope, exports);";
+        s += "}";
+        s++;
 
-        // Created before the try so the catch can still build the JS error, and disposed when
-        // init returns; module callbacks recover the context from env instance data, so it
-        // need not persist past initialization.
-        s += "using var moduleScope = new JSValueScope(JSValueScopeType.Module, env, runtime: default);";
+        // The shared body builds the exports within the module scope opened by an entrypoint
+        // above; the scope stays alive through the catch so it can build the JS error.
+        s += $"private static napi_value {ModuleExportsMethodName}(JSValueScope moduleScope, napi_value exports)";
+        s += "{";
         s += "try";
         s += "{";
         s += "JSRuntimeContext context = moduleScope.RuntimeContext;";

@@ -14,40 +14,23 @@ namespace Microsoft.JavaScript.NodeApi;
 /// <summary>
 /// Indicates the type of <see cref="JSValueScope" /> within the hierarchy of scopes.
 /// </summary>
-public enum JSValueScopeType
+internal enum JSValueScopeType
 {
     /// <summary>
-    /// A parent scope shared by all (non-AOT) .NET modules loaded in the same process. It has
-    /// a <see cref="JSRuntimeContext" /> but no module instance.
+    /// References a <see cref="JSRuntimeContext" /> and marks the call/context boundary for a JS
+    /// environment. Opens no napi handle scope; it is the scope a <see cref="JSValue" /> falls back
+    /// to for validity when no handle scope is open.
     /// </summary>
-    /// <remarks>
-    /// AOT modules do not have any root scope, so each module scope has a separate
-    /// <see cref="JSRuntimeContext"/>.
-    /// </remarks>
-    Root,
+    RuntimeContext,
 
     /// <summary>
-    /// A scope specific to each module. It inherits the <see cref="JSRuntimeContext" /> from the root
-    /// scope, and has a unique module instance.
-    /// </summary>
-    /// <remarks>
-    /// AOT modules do not have any root scope, so each module also has a separate
-    /// <see cref="JSRuntimeContext"/>.
-    /// </remarks>
-    Module,
-
-    /// <summary>
-    /// Callback scope within a module; inherits context from the module.
-    /// </summary>
-    Callback,
-
-    /// <summary>
-    /// Handle scope within a callback; inherits context from the module.
+    /// Opens a napi handle scope nested within a parent scope, from which it inherits the context.
     /// </summary>
     Handle,
 
     /// <summary>
-    /// Escapable handle scope within a callback; inherits context from the module.
+    /// Opens an escapable napi handle scope nested within a parent scope, and can escape one value
+    /// to the parent scope.
     /// </summary>
     Escapable,
 }
@@ -71,7 +54,7 @@ public sealed class JSValueScope : IDisposable
     private readonly SynchronizationContext? _previousSyncContext;
     private readonly nint _scopeHandle;
 
-    public JSValueScopeType ScopeType { get; }
+    internal JSValueScopeType ScopeType { get; }
 
     /// <summary>
     /// Gets the current JS value scope.
@@ -155,180 +138,69 @@ public sealed class JSValueScope : IDisposable
     public object? Module => ModuleHolder?.Value;
 
     /// <summary>
-    /// Creates a new instance of a <see cref="JSValueScope"/> with a specified scope type.
+    /// Creates a scope that references a <see cref="JSRuntimeContext" /> and marks the call/context
+    /// boundary for a JS environment. It opens no napi handle scope.
     /// </summary>
-    /// <param name="scopeType">The type of scope to create; default is
-    /// <see cref="JSValueScopeType.Handle" />.</param>
-    public JSValueScope(JSValueScopeType scopeType = JSValueScopeType.Handle)
-        : this(scopeType, env: default, runtime: default)
-    {
-    }
+    /// <param name="env">The JS environment handle.</param>
+    /// <param name="context">The runtime context to reference. When null it is inherited from the
+    /// parent scope, or recovered from the environment instance data.</param>
+    public static JSValueScope CreateRuntimeScope(
+        napi_env env = default, JSRuntimeContext? context = null)
+        => new(env, context);
 
     /// <summary>
-    /// Creates a new instance of a <see cref="JSValueScope"/>, which may be a parentless scope
-    /// with initial environment handle and JS runtime.
+    /// Creates a napi handle scope nested within the current scope. JS values created within it
+    /// are released when it is disposed, unless held by a <see cref="JSReference" />.
     /// </summary>
-    /// <param name="scopeType">The type of scope to create.</param>
-    /// <param name="env">JS environment handle, required only for creating a scope
-    /// without a parent, otherwise the environment is inherited from the parent scope.</param>
-    /// <param name="runtime">JS runtime interface, required only for creating a scope
-    /// without a parent, otherwise the JS runtime is inherited from the parent scope.</param>
-    /// <param name="synchronizationContext">Optional synchronization context to use for async
-    /// operations; if omitted then a default synchronization context is used.</param>
-    public JSValueScope(
-        JSValueScopeType scopeType,
-        napi_env env,
-        JSRuntime? runtime,
-        JSSynchronizationContext? synchronizationContext = null)
+    public static JSValueScope CreateHandleScope() => new(JSValueScopeType.Handle);
+
+    /// <summary>
+    /// Creates an escapable napi handle scope nested within the current scope. One value may be
+    /// promoted to the parent scope with <see cref="Escape" />.
+    /// </summary>
+    public static JSValueScope CreateEscapableScope() => new(JSValueScopeType.Escapable);
+
+    /// <summary>
+    /// Creates a <see cref="JSValueScopeType.RuntimeContext" /> scope that references an existing
+    /// <see cref="JSRuntimeContext" /> (it never creates one).
+    /// </summary>
+    private JSValueScope(napi_env env, JSRuntimeContext? context)
     {
-        ScopeType = scopeType;
+        ScopeType = JSValueScopeType.RuntimeContext;
+        _parentScope = CurrentOrNull;
 
-        if (scopeType == JSValueScopeType.Root)
+        if (context != null)
         {
-            _parentScope = CurrentOrNull;
-            if (_parentScope != null)
+            // An explicit context is a root boundary (host, AOT module, or embedding).
+            if (!env.IsNull && env != context.UncheckedEnvironmentHandle)
             {
-                if (_parentScope.ScopeType == JSValueScopeType.Root)
-                {
-                    // When there are multiple instances of the managed host in a process
-                    // (created by separate workers), they do not inherit scope.
-                    _parentScope = null;
-                }
-                else
-                {
-                    throw new InvalidOperationException(
-                        "A Root scope cannot be created within another scope.");
-                }
+                throw new ArgumentException(
+                    "Environment does not match the runtime context.", nameof(env));
             }
-
-            if (env.IsNull)
-            {
-                throw new ArgumentNullException(
-                    nameof(env), "An environment is required for a root scope.");
-            }
-            else if (runtime == null)
-            {
-                throw new ArgumentNullException(
-                    nameof(runtime), "A runtime is required for a root scope.");
-            }
-
-            _env = env;
-            ThreadId = Environment.CurrentManagedThreadId;
-            Runtime = runtime;
         }
         else
         {
-            _parentScope = CurrentOrNull;
-
-            if (scopeType == JSValueScopeType.Module &&
-                _parentScope != null && _parentScope.ScopeType == JSValueScopeType.Module)
-            {
-                // When there are multiple AOT modules in a process, they do not inherit scope.
-                _parentScope = null;
-            }
-
-            if (_parentScope == null)
-            {
-                // Module scopes may be created without a parent scope (for AOT modules).
-                if (scopeType != JSValueScopeType.Module)
-                {
-                    throw new InvalidOperationException(
-                        $"A {scopeType} scope cannot be created without a parent scope.");
-                }
-
-                // AOT module scopes are constructed with an env parameter
-                // but without a pre-initialized runtime.
-                _env = env.IsNull ? throw new ArgumentNullException(nameof(env)) : env;
-                ThreadId = Environment.CurrentManagedThreadId;
-                Runtime = runtime ?? new NodejsRuntime();
-            }
-            else if (_parentScope.IsDisposed)
-            {
-                // This should never happen because disposing a scope removes it from
-                // s_currentScope (which is used to initialize _parentScope above).
-                throw new InvalidOperationException("Parent scope is disposed.");
-            }
-            else if (scopeType == JSValueScopeType.Callback &&
-                _parentScope.ScopeType != JSValueScopeType.Callback &&
-                _parentScope.ScopeType != JSValueScopeType.Module &&
-                _parentScope.ScopeType != JSValueScopeType.Root)
-            {
-                throw new InvalidOperationException(
-                    $"A Callback scope must be created within a Root, Module, or Callback scope. " +
-                    $"Current scope: {scopeType}");
-            }
-            else if (!env.IsNull && env != _parentScope._env)
-            {
-                throw new ArgumentException(
-                    "Environment must not be provided for a non-root scope.",
-                    nameof(env));
-            }
-            else if (runtime != null && runtime != _parentScope.Runtime)
-            {
-                throw new ArgumentException(
-                    "Runtime must not be provided for a non-root scope.",
-                    nameof(runtime));
-            }
-            else
-            {
-                _parentScope.ThrowIfInvalidThreadAccess();
-                _env = _parentScope._env;
-                ThreadId = _parentScope.ThreadId;
-                Runtime = _parentScope.Runtime;
-            }
-
-            if (scopeType == JSValueScopeType.Module)
-            {
-                if (_parentScope?.ModuleHolder != null)
-                {
-                    throw new InvalidOperationException("Module scope cannot be nested.");
-                }
-
-                ModuleHolder = new StrongBox<object?>();
-            }
-            else
-            {
-                ModuleHolder = _parentScope!.ModuleHolder;
-            }
+            // Inherit the parent scope's context, else recover it from the env instance data.
+            context = _parentScope?.RuntimeContext
+                ?? JSRuntimeContext.FromEnv(env)
+                ?? throw new InvalidOperationException(
+                    "A runtime context could not be resolved for the scope.");
         }
 
-        _scopeHandle = ScopeType switch
-        {
-            JSValueScopeType.Handle
-                => Runtime.OpenHandleScope(_env, out napi_handle_scope handleScope)
-                   .ThrowIfFailed(handleScope).Handle,
-            JSValueScopeType.Escapable
-                => Runtime.OpenEscapableHandleScope(
-                    _env, out napi_escapable_handle_scope handleScope)
-                   .ThrowIfFailed(handleScope).Handle,
-            _ => default,
-        };
+        _env = context.UncheckedEnvironmentHandle;
+        ThreadId = Environment.CurrentManagedThreadId;
+        Runtime = context.Runtime;
+        ModuleHolder = new StrongBox<object?>();
 
         JSValueScope? previousScope = CurrentOrNull;
         try
         {
             CurrentOrNull = this;
+            RuntimeContext = context;
+            RuntimeContextHandle = context.ContextHandle;
 
-            if (_parentScope?.RuntimeContext != null)
-            {
-                // Nested scopes inherit the runtime context from the parent scope.
-                RuntimeContext = _parentScope.RuntimeContext;
-                RuntimeContextHandle = _parentScope.RuntimeContextHandle;
-            }
-            else
-            {
-                // Unparented scopes initialize a new runtime context.
-                RuntimeContext = new JSRuntimeContext(
-                    env, Runtime, synchronizationContext);
-                RuntimeContextHandle = RuntimeContext.ContextHandle;
-            }
-
-            if (scopeType == JSValueScopeType.Root || scopeType == JSValueScopeType.Callback)
-            {
-                _previousSyncContext = SynchronizationContext.Current;
-                SynchronizationContext.SetSynchronizationContext(
-                    RuntimeContext.SynchronizationContext);
-            }
+            _previousSyncContext = SynchronizationContext.Current;
+            SynchronizationContext.SetSynchronizationContext(context.SynchronizationContext);
         }
         catch (Exception)
         {
@@ -338,20 +210,27 @@ public sealed class JSValueScope : IDisposable
     }
 
     /// <summary>
-    /// Creates a transient scope that adopts an existing <see cref="JSRuntimeContext"/> instead of
-    /// creating a new one, to dispatch a callback when there is no parent scope on the current
-    /// thread. The context is typically recovered from env instance data via
-    /// <see cref="JSRuntimeContext.FromEnv"/>.
+    /// Creates a <see cref="JSValueScopeType.Handle" /> or <see cref="JSValueScopeType.Escapable" />
+    /// scope that opens a napi handle scope nested within the current scope.
     /// </summary>
-    internal JSValueScope(JSValueScopeType scopeType, JSRuntimeContext context)
+    private JSValueScope(JSValueScopeType scopeType)
     {
         ScopeType = scopeType;
-        _parentScope = null;
-        _env = context.UncheckedEnvironmentHandle;
-        ThreadId = Environment.CurrentManagedThreadId;
-        Runtime = context.Runtime;
+        _parentScope = CurrentOrNull ?? throw new InvalidOperationException(
+            $"A {scopeType} scope cannot be created without a parent scope.");
 
-        _scopeHandle = ScopeType switch
+        if (_parentScope.IsDisposed)
+        {
+            throw new InvalidOperationException("Parent scope is disposed.");
+        }
+
+        _parentScope.ThrowIfInvalidThreadAccess();
+        _env = _parentScope._env;
+        ThreadId = _parentScope.ThreadId;
+        Runtime = _parentScope.Runtime;
+        ModuleHolder = _parentScope.ModuleHolder;
+
+        _scopeHandle = scopeType switch
         {
             JSValueScopeType.Handle
                 => Runtime.OpenHandleScope(_env, out napi_handle_scope handleScope)
@@ -360,22 +239,16 @@ public sealed class JSValueScope : IDisposable
                 => Runtime.OpenEscapableHandleScope(
                     _env, out napi_escapable_handle_scope handleScope)
                    .ThrowIfFailed(handleScope).Handle,
-            _ => default,
+            _ => throw new ArgumentException(
+                $"Invalid handle scope type: {scopeType}", nameof(scopeType)),
         };
 
         JSValueScope? previousScope = CurrentOrNull;
         try
         {
             CurrentOrNull = this;
-            RuntimeContext = context;
-            RuntimeContextHandle = context.ContextHandle;
-
-            if (scopeType == JSValueScopeType.Root || scopeType == JSValueScopeType.Callback)
-            {
-                _previousSyncContext = SynchronizationContext.Current;
-                SynchronizationContext.SetSynchronizationContext(
-                    RuntimeContext.SynchronizationContext);
-            }
+            RuntimeContext = _parentScope.RuntimeContext;
+            RuntimeContextHandle = _parentScope.RuntimeContextHandle;
         }
         catch (Exception)
         {

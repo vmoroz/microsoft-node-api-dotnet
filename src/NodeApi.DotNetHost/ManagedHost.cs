@@ -207,8 +207,8 @@ public sealed class ManagedHost : JSEventEmitter, IDisposable
         // environment teardown, so the managed context is a non-owner: it writes its own slot but
         // does not claim the finalizer, and is disposed via the registration notification below.
         bool hosted = registration != null;
-        using JSValueScope scope = new(
-            JSValueScopeType.Root, env, runtime, synchronizationContext: null);
+        JSRuntimeContext context = new(env, runtime);
+        using JSValueScope scope = JSValueScope.CreateRuntimeScope(env, context);
 
         try
         {
@@ -229,7 +229,7 @@ public sealed class ManagedHost : JSEventEmitter, IDisposable
 
             ManagedHost host = new(exportsObject)
             {
-                _context = scope.RuntimeContext
+                _context = context
             };
 
             if (hosted)

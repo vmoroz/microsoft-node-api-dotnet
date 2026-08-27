@@ -232,7 +232,7 @@ public struct JSError
         if (_errorRef is null)
             return;
 
-        using var scope = new JSValueScope(JSValueScopeType.Handle);
+        using var scope = JSValueScope.CreateHandleScope();
 
         if (IsExceptionPending())
             throw new JSException(new JSError());

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 using System;
+using Microsoft.JavaScript.NodeApi.Interop;
 using Xunit;
 using static Microsoft.JavaScript.NodeApi.Runtime.JSRuntime;
 
@@ -16,204 +17,97 @@ public class JSValueScopeTests
 {
     private readonly MockJSRuntime _mockRuntime = new();
 
-    private JSValueScope TestScope(JSValueScopeType scopeType)
+    private JSValueScope TestRuntimeScope()
     {
         napi_env env = new(Environment.CurrentManagedThreadId);
-        return new(scopeType, env, _mockRuntime, new MockJSRuntime.SynchronizationContext());
+        var context = new JSRuntimeContext(
+            env, _mockRuntime, new MockJSRuntime.SynchronizationContext());
+        return JSValueScope.CreateRuntimeScope(env, context);
     }
 
     [Fact]
-    public void CreateRootScope()
+    public void CreateRuntimeScope()
     {
-        using JSValueScope rootScope = TestScope(JSValueScopeType.Root);
-        Assert.NotNull(rootScope.RuntimeContext);
-        Assert.Equal(JSValueScopeType.Root, JSValueScope.Current.ScopeType);
+        using JSValueScope runtimeScope = TestRuntimeScope();
+        Assert.NotNull(runtimeScope.RuntimeContext);
+        Assert.Equal(JSValueScopeType.RuntimeContext, JSValueScope.Current.ScopeType);
     }
 
     [Fact]
-    public void CreateModuleScopeWithinRootScope()
+    public void CreateNestedRuntimeScope()
     {
-        using JSValueScope rootScope = TestScope(JSValueScopeType.Root);
+        using JSValueScope runtimeScope = TestRuntimeScope();
 
-        using (JSValueScope moduleScope = new(JSValueScopeType.Module))
+        using (JSValueScope nestedScope = JSValueScope.CreateRuntimeScope())
         {
-            Assert.NotNull(moduleScope.RuntimeContext);
-            Assert.Equal(JSValueScopeType.Module, JSValueScope.Current.ScopeType);
+            Assert.Same(runtimeScope.RuntimeContext, nestedScope.RuntimeContext);
+            Assert.Equal(JSValueScopeType.RuntimeContext, JSValueScope.Current.ScopeType);
         }
 
-        Assert.Equal(JSValueScopeType.Root, JSValueScope.Current.ScopeType);
+        Assert.Equal(JSValueScopeType.RuntimeContext, JSValueScope.Current.ScopeType);
     }
 
     [Fact]
-    public void CreateModuleScopeWithoutRoot()
+    public void CreateHandleScopeWithinRuntimeScope()
     {
-        using JSValueScope moduleScope = TestScope(JSValueScopeType.Module);
-        Assert.NotNull(moduleScope.RuntimeContext);
-        Assert.Equal(JSValueScopeType.Module, JSValueScope.Current.ScopeType);
-    }
+        using JSValueScope runtimeScope = TestRuntimeScope();
 
-    [Fact]
-    public void CreateCallbackScope()
-    {
-        using JSValueScope moduleScope = TestScope(JSValueScopeType.Module);
-
-        using (JSValueScope callbackScope = new(JSValueScopeType.Callback))
-        {
-            Assert.NotNull(moduleScope.RuntimeContext);
-            Assert.Equal(JSValueScopeType.Callback, JSValueScope.Current.ScopeType);
-        }
-
-        Assert.Equal(JSValueScopeType.Module, JSValueScope.Current.ScopeType);
-    }
-
-    [Fact]
-    public void CreateHandleScopeWithinRoot()
-    {
-        using JSValueScope rootScope = TestScope(JSValueScopeType.Root);
-
-        using (JSValueScope handleScope = new(JSValueScopeType.Handle))
+        using (JSValueScope handleScope = JSValueScope.CreateHandleScope())
         {
             Assert.Equal(JSValueScopeType.Handle, JSValueScope.Current.ScopeType);
         }
 
-        Assert.Equal(JSValueScopeType.Root, JSValueScope.Current.ScopeType);
+        Assert.Equal(JSValueScopeType.RuntimeContext, JSValueScope.Current.ScopeType);
     }
 
     [Fact]
-    public void CreateHandleScopeWithinModule()
+    public void CreateHandleScopeWithinNestedRuntimeScope()
     {
-        using JSValueScope moduleScope = TestScope(JSValueScopeType.Module);
+        using JSValueScope runtimeScope = TestRuntimeScope();
 
-        using (JSValueScope handleScope = new(JSValueScopeType.Handle))
+        using (JSValueScope nestedScope = JSValueScope.CreateRuntimeScope())
         {
-            Assert.Equal(JSValueScopeType.Handle, JSValueScope.Current.ScopeType);
-        }
-
-        Assert.Equal(JSValueScopeType.Module, JSValueScope.Current.ScopeType);
-    }
-
-    [Fact]
-    public void CreateHandleScopeWithinCallback()
-    {
-        using JSValueScope moduleScope = TestScope(JSValueScopeType.Module);
-
-        using (JSValueScope callbackScope = new(JSValueScopeType.Callback))
-        {
-            using (JSValueScope handleScope = new(JSValueScopeType.Handle))
+            using (JSValueScope handleScope = JSValueScope.CreateHandleScope())
             {
                 Assert.Equal(JSValueScopeType.Handle, JSValueScope.Current.ScopeType);
             }
 
-            Assert.Equal(JSValueScopeType.Callback, JSValueScope.Current.ScopeType);
+            Assert.Equal(JSValueScopeType.RuntimeContext, JSValueScope.Current.ScopeType);
         }
 
-        Assert.Equal(JSValueScopeType.Module, JSValueScope.Current.ScopeType);
+        Assert.Equal(JSValueScopeType.RuntimeContext, JSValueScope.Current.ScopeType);
     }
 
     [Fact]
-    public void CreateEscapableScopeWithinCallback()
+    public void CreateEscapableScopeWithinRuntimeScope()
     {
-        using JSValueScope moduleScope = TestScope(JSValueScopeType.Module);
+        using JSValueScope runtimeScope = TestRuntimeScope();
 
-        using (JSValueScope callbackScope = new(JSValueScopeType.Callback))
+        using (JSValueScope escapableScope = JSValueScope.CreateEscapableScope())
         {
-            using (JSValueScope escapableScope = new(JSValueScopeType.Escapable))
-            {
-                Assert.Equal(JSValueScopeType.Escapable, JSValueScope.Current.ScopeType);
-            }
-
-            Assert.Equal(JSValueScopeType.Callback, JSValueScope.Current.ScopeType);
+            Assert.Equal(JSValueScopeType.Escapable, JSValueScope.Current.ScopeType);
         }
 
-        Assert.Equal(JSValueScopeType.Module, JSValueScope.Current.ScopeType);
+        Assert.Equal(JSValueScopeType.RuntimeContext, JSValueScope.Current.ScopeType);
     }
 
     [Fact]
-    public void InvalidRootContextScopeNesting()
+    public void HandleScopeRequiresParentScope()
     {
-        using JSValueScope moduleScope = TestScope(JSValueScopeType.Module);
-        Assert.Throws<InvalidOperationException>(() =>
-        {
-            using JSValueScope rootScope = new(JSValueScopeType.Root);
-        });
-        Assert.Equal(JSValueScopeType.Module, JSValueScope.Current.ScopeType);
-
-        using JSValueScope callbackScope = new(JSValueScopeType.Callback);
-        Assert.Throws<InvalidOperationException>(() =>
-        {
-            using JSValueScope rootScope = new(JSValueScopeType.Root);
-        });
-        Assert.Equal(JSValueScopeType.Callback, JSValueScope.Current.ScopeType);
-
-        using JSValueScope handleScope = new(JSValueScopeType.Handle);
-        Assert.Throws<InvalidOperationException>(() =>
-        {
-            using JSValueScope rootScope = new(JSValueScopeType.Root);
-        });
-        Assert.Equal(JSValueScopeType.Handle, JSValueScope.Current.ScopeType);
-
-        using JSValueScope escapableScope = new(JSValueScopeType.Escapable);
-        Assert.Throws<InvalidOperationException>(() =>
-        {
-            using JSValueScope rootScope = new(JSValueScopeType.Root);
-        });
-        Assert.Equal(JSValueScopeType.Escapable, JSValueScope.Current.ScopeType);
-    }
-
-    [Fact]
-    public void InvalidModuleContextScopeNesting()
-    {
-        using JSValueScope moduleScope = TestScope(JSValueScopeType.Module);
-        using JSValueScope callbackScope = new(JSValueScopeType.Callback);
-        Assert.Throws<InvalidOperationException>(() =>
-        {
-            using JSValueScope nestedModuleScope = new(JSValueScopeType.Module);
-        });
-        Assert.Equal(JSValueScopeType.Callback, JSValueScope.Current.ScopeType);
-
-        using JSValueScope handleScope = new(JSValueScopeType.Handle);
-        Assert.Throws<InvalidOperationException>(() =>
-        {
-            using JSValueScope nestedModuleScope = new(JSValueScopeType.Module);
-        });
-        Assert.Equal(JSValueScopeType.Handle, JSValueScope.Current.ScopeType);
-
-        using JSValueScope escapableScope = new(JSValueScopeType.Escapable);
-        Assert.Throws<InvalidOperationException>(() =>
-        {
-            using JSValueScope nestedModuleScope = new(JSValueScopeType.Module);
-        });
-        Assert.Equal(JSValueScopeType.Escapable, JSValueScope.Current.ScopeType);
-    }
-
-    [Fact]
-    public void InvalidCallbackContextScopeNesting()
-    {
-        using JSValueScope rootScope = TestScope(JSValueScopeType.Root);
-
-        using JSValueScope handleScope = new(JSValueScopeType.Handle);
-        Assert.Throws<InvalidOperationException>(() =>
-        {
-            using JSValueScope callbackScope = new(JSValueScopeType.Callback);
-        });
-        Assert.Equal(JSValueScopeType.Handle, JSValueScope.Current.ScopeType);
-
-        using JSValueScope escapableScope = new(JSValueScopeType.Escapable);
-        Assert.Throws<InvalidOperationException>(() =>
-        {
-            using JSValueScope callbackScope = new(JSValueScopeType.Callback);
-        });
-        Assert.Equal(JSValueScopeType.Escapable, JSValueScope.Current.ScopeType);
+        Assert.Throws<InvalidOperationException>(
+            () => JSValueScope.CreateHandleScope());
+        Assert.Throws<InvalidOperationException>(
+            () => JSValueScope.CreateEscapableScope());
     }
 
     [Fact]
     public void AccessValueFromClosedScope()
     {
-        using JSValueScope rootScope = TestScope(JSValueScopeType.Root);
+        using JSValueScope rootScope = TestRuntimeScope();
 
         JSValueScope handleScope;
         JSValue objectValue;
-        using (handleScope = new(JSValueScopeType.Handle))
+        using (handleScope = JSValueScope.CreateHandleScope())
         {
             objectValue = JSValue.CreateObject();
             Assert.True(objectValue.IsObject());
@@ -228,13 +122,13 @@ public class JSValueScopeTests
     [Fact]
     public void AccessPropertyKeyFromClosedScope()
     {
-        using JSValueScope rootScope = TestScope(JSValueScopeType.Root);
+        using JSValueScope rootScope = TestRuntimeScope();
 
         JSValue objectValue = JSValue.CreateObject();
         JSValue propertyKey;
 
         JSValueScope handleScope;
-        using (handleScope = new(JSValueScopeType.Handle))
+        using (handleScope = JSValueScope.CreateHandleScope())
         {
             propertyKey = "test";
             Assert.True(propertyKey.IsString());
@@ -253,7 +147,7 @@ public class JSValueScopeTests
     [Fact]
     public void CreateValueFromDifferentThread()
     {
-        using JSValueScope rootScope = TestScope(JSValueScopeType.Root);
+        using JSValueScope rootScope = TestRuntimeScope();
 
         // Run in a new thread which will not have any current scope.
         TestUtils.RunInThread(() =>
@@ -269,7 +163,7 @@ public class JSValueScopeTests
     [Fact]
     public void AccessValueFromDifferentThread()
     {
-        using JSValueScope rootScope = TestScope(JSValueScopeType.Root);
+        using JSValueScope rootScope = TestRuntimeScope();
         JSValue objectValue = JSValue.CreateObject();
 
         // Run in a new thread which will not have any current scope.
@@ -286,14 +180,14 @@ public class JSValueScopeTests
     [Fact]
     public void AccessValueFromDifferentRootScope()
     {
-        using JSValueScope rootScope1 = TestScope(JSValueScopeType.Root);
+        using JSValueScope rootScope1 = TestRuntimeScope();
         JSValue objectValue = JSValue.CreateObject();
 
         // Run in a new thread and establish another root scope there.
         TestUtils.RunInThread(() =>
         {
-            using JSValueScope rootScope2 = TestScope(JSValueScopeType.Root);
-            Assert.Equal(JSValueScopeType.Root, JSValueScope.Current.ScopeType);
+            using JSValueScope rootScope2 = TestRuntimeScope();
+            Assert.Equal(JSValueScopeType.RuntimeContext, JSValueScope.Current.ScopeType);
             JSInvalidThreadAccessException ex = Assert.Throws<JSInvalidThreadAccessException>(
                 () => objectValue.IsObject());
             Assert.Equal(rootScope2, ex.CurrentScope);

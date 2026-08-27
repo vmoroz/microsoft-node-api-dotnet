@@ -4,6 +4,7 @@
 namespace Microsoft.JavaScript.NodeApi.Runtime;
 
 using System;
+using Microsoft.JavaScript.NodeApi.Interop;
 using static JSRuntime;
 using static NodejsRuntime;
 
@@ -19,8 +20,8 @@ public sealed class NodeEmbeddingNodeApiScope : IDisposable
         NodeEmbedding.JSRuntime.EmbeddingRuntimeOpenNodeApiScope(
             runtime.Handle, out _nodeApiScope, out napi_env env)
             .ThrowIfFailed();
-        _valueScope = new JSValueScope(
-            JSValueScopeType.Root, env, NodeEmbedding.JSRuntime);
+        JSRuntimeContext context = new(env, NodeEmbedding.JSRuntime);
+        _valueScope = JSValueScope.CreateRuntimeScope(env, context);
     }
 
     /// <summary>

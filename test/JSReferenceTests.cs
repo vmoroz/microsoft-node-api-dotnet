@@ -13,20 +13,20 @@ public class JSReferenceTests
 {
     private readonly MockJSRuntime _mockRuntime = new();
 
-    private JSValueScope TestScope(JSValueScopeType scopeType)
-        => TestScope(scopeType, new MockJSRuntime.SynchronizationContext());
+    private JSValueScope TestScope()
+        => TestScope(new MockJSRuntime.SynchronizationContext());
 
-    private JSValueScope TestScope(
-        JSValueScopeType scopeType, JSSynchronizationContext synchronizationContext)
+    private JSValueScope TestScope(JSSynchronizationContext synchronizationContext)
     {
         napi_env env = new(Environment.CurrentManagedThreadId);
-        return new(scopeType, env, _mockRuntime, synchronizationContext);
+        var context = new JSRuntimeContext(env, _mockRuntime, synchronizationContext);
+        return JSValueScope.CreateRuntimeScope(env, context);
     }
 
     [Fact]
     public void GetReferenceFromSameScope()
     {
-        using JSValueScope rootScope = TestScope(JSValueScopeType.Root);
+        using JSValueScope rootScope = TestScope();
 
         JSValue value = JSValue.CreateObject();
         JSReference reference = new(value);
@@ -36,10 +36,10 @@ public class JSReferenceTests
     [Fact]
     public void GetReferenceFromParentScope()
     {
-        using JSValueScope rootScope = TestScope(JSValueScopeType.Root);
+        using JSValueScope rootScope = TestScope();
 
         JSReference reference;
-        using (JSValueScope handleScope = new(JSValueScopeType.Handle))
+        using (JSValueScope handleScope = JSValueScope.CreateHandleScope())
         {
             JSValue value = JSValue.CreateObject();
             reference = new JSReference(value);
@@ -51,7 +51,7 @@ public class JSReferenceTests
     [Fact]
     public void GetReferenceFromDifferentThread()
     {
-        using JSValueScope rootScope = TestScope(JSValueScopeType.Root);
+        using JSValueScope rootScope = TestScope();
 
         JSValue value = JSValue.CreateObject();
         JSReference reference = new(value);
@@ -66,7 +66,7 @@ public class JSReferenceTests
     [Fact]
     public void GetReferenceFromDifferentRootScope()
     {
-        using JSValueScope rootScope1 = TestScope(JSValueScopeType.Root);
+        using JSValueScope rootScope1 = TestScope();
 
         JSValue value = JSValue.CreateObject();
         JSReference reference = new(value);
@@ -74,7 +74,7 @@ public class JSReferenceTests
         // Run in a new thread and establish another root scope there.
         TestUtils.RunInThread(() =>
         {
-            using JSValueScope rootScope2 = TestScope(JSValueScopeType.Root);
+            using JSValueScope rootScope2 = TestScope();
             Assert.Throws<JSInvalidThreadAccessException>(() => reference.GetValue());
         }).Wait();
     }
@@ -82,7 +82,7 @@ public class JSReferenceTests
     [Fact]
     public void GetWeakReferenceUnavailable()
     {
-        using JSValueScope rootScope = TestScope(JSValueScopeType.Root);
+        using JSValueScope rootScope = TestScope();
 
         JSValue value = JSValue.CreateObject();
         var reference = new JSReference(value, isWeak: true);
@@ -94,7 +94,7 @@ public class JSReferenceTests
     [Fact]
     public void TryGetWeakReferenceValue()
     {
-        using JSValueScope rootScope = TestScope(JSValueScopeType.Root);
+        using JSValueScope rootScope = TestScope();
 
         JSValue value = JSValue.CreateObject();
         JSReference reference = new(value);
@@ -105,7 +105,7 @@ public class JSReferenceTests
     [Fact]
     public void TryGetWeakReferenceUnavailable()
     {
-        using JSValueScope rootScope = TestScope(JSValueScopeType.Root);
+        using JSValueScope rootScope = TestScope();
 
         JSValue value = JSValue.CreateObject();
         var reference = new JSReference(value, isWeak: true);
@@ -121,7 +121,7 @@ public class JSReferenceTests
     public void FinalizeContextReferenceFromDifferentThreadDoesNotThrow()
     {
         var syncContext = new MockJSRuntime.RecordingSynchronizationContext();
-        using JSValueScope rootScope = TestScope(JSValueScopeType.Root, syncContext);
+        using JSValueScope rootScope = TestScope(syncContext);
 
         JSValue value = JSValue.CreateObject();
         var reference = new FinalizerTestReference(value);
@@ -149,7 +149,7 @@ public class JSReferenceTests
     [Fact]
     public void FinalizerSwallowsExceptionsFromDerivedDisposeOverride()
     {
-        using JSValueScope rootScope = TestScope(JSValueScopeType.Root);
+        using JSValueScope rootScope = TestScope();
 
         CreateAndAbandonThrowingReference();
 

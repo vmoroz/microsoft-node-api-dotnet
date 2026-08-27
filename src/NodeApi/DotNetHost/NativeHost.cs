@@ -204,15 +204,14 @@ internal unsafe partial class NativeHost : IDisposable
         // dispose() callbacks (dispatched later with no parent scope) recover it via FromEnv.
         JSRuntimeContext.UseHostContextSlot();
 
-        // Transient Root scope (inline, non-TSFN sync context), opened before the try so the catch
-        // can still build a JSValue error. The host context outlives it -- rooted by its
-        // instance-data slot, disposed by that slot's finalizer (which disposes the NativeHost).
-        using JSValueScope hostScope = new(
-            JSValueScopeType.Root, env, s_jsRuntime, new JSInlineSynchronizationContext());
+        // The host owns its context (inline, non-TSFN sync context); the transient scope only
+        // references it and is opened before the try so the catch can still build a JSValue error.
+        // The context outlives the scope -- rooted by its instance-data slot, disposed by that
+        // slot's finalizer (which disposes the NativeHost).
+        JSRuntimeContext context = new(env, s_jsRuntime, new JSInlineSynchronizationContext());
+        using JSValueScope hostScope = JSValueScope.CreateRuntimeScope(env, context);
         try
         {
-            JSRuntimeContext context = hostScope.RuntimeContext;
-
             NativeHost host = new();
             context.SetDisposableAnnotation(host);
 

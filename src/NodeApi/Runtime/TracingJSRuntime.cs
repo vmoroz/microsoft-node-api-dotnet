@@ -377,17 +377,10 @@ public class TracingJSRuntime : JSRuntime
         <napi_env, napi_callback_info, napi_value> s_traceSetterCallback = &TraceSetterCallback;
 #endif
 
-    // Like InvokeCallback (which these replace when tracing is on), tolerate a parentless thread
-    // by recovering the context from env instance data when no scope is current.
+    // Like InvokeCallback (which these replace when tracing is on), the scope references the context
+    // inherited from the parent scope, or recovered from env instance data when there is none.
     private static JSValueScope CreateCallbackScope(napi_env env)
-    {
-        JSRuntimeContext? parentlessContext = JSValueScope.CurrentOrNull is null
-            ? JSRuntimeContext.FromEnv(env)
-            : null;
-        return parentlessContext is not null
-            ? new JSValueScope(JSValueScopeType.Callback, parentlessContext)
-            : new JSValueScope(JSValueScopeType.Callback);
-    }
+        => JSValueScope.CreateRuntimeScope(env);
 
 #if UNMANAGED_DELEGATES
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]

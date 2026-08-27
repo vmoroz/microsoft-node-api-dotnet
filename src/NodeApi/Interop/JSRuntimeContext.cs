@@ -213,7 +213,31 @@ public sealed class JSRuntimeContext : IDisposable
 
     public JSRuntime Runtime { get; }
 
-    public JSSynchronizationContext SynchronizationContext { get; }
+    private JSSynchronizationContext? _synchronizationContext;
+
+    /// <summary>
+    /// Gets the synchronization context that marshals callbacks and continuations to the JS thread.
+    /// A default one is created on first access, which happens while a scope for this context is
+    /// current, because creating it requires the current scope's runtime and environment.
+    /// </summary>
+    public JSSynchronizationContext SynchronizationContext
+        => _synchronizationContext ??= JSSynchronizationContext.Create();
+
+    /// <summary>
+    /// Creates a runtime context for a JS environment. Used by AOT module entry points and other
+    /// embedders that own the environment and therefore create the context rather than resolving
+    /// it from a host.
+    /// </summary>
+    /// <param name="env">The JS environment handle.</param>
+    /// <param name="runtime">The JS runtime interface; defaults to a <see cref="NodejsRuntime"/>.
+    /// </param>
+    /// <param name="synchronizationContext">The synchronization context owned by this context; a
+    /// default one is created when omitted.</param>
+    public static JSRuntimeContext Create(
+        napi_env env,
+        JSRuntime? runtime = null,
+        JSSynchronizationContext? synchronizationContext = null)
+        => new(env, runtime ?? new NodejsRuntime(), synchronizationContext);
 
     internal JSRuntimeContext(
         napi_env env,
@@ -227,7 +251,7 @@ public sealed class JSRuntimeContext : IDisposable
         _contextHandle = (nint)GCHandle.Alloc(this);
         RegisterInstanceData(env, runtime);
 
-        SynchronizationContext = synchronizationContext ?? JSSynchronizationContext.Create();
+        _synchronizationContext = synchronizationContext;
     }
 
     /// <summary>

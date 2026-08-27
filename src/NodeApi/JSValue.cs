@@ -1213,7 +1213,7 @@ public readonly struct JSValue : IJSValue<JSValue>
         napi_env env, napi_callback_info callbackInfo)
     {
         return InvokeCallback<JSCallbackDescriptor>(
-            env, callbackInfo, JSValueScopeType.Callback, (descriptor) => descriptor);
+            env, callbackInfo, (descriptor) => descriptor);
     }
 
 #if UNMANAGED_DELEGATES
@@ -1222,7 +1222,7 @@ public readonly struct JSValue : IJSValue<JSValue>
     private static unsafe napi_value InvokeJSMethod(napi_env env, napi_callback_info callbackInfo)
     {
         return InvokeCallback<JSPropertyDescriptor>(
-            env, callbackInfo, JSValueScopeType.Callback, (propertyDescriptor) => new(
+            env, callbackInfo, (propertyDescriptor) => new(
                 propertyDescriptor.Name,
                 propertyDescriptor.Method!,
                 propertyDescriptor.Data,
@@ -1235,7 +1235,7 @@ public readonly struct JSValue : IJSValue<JSValue>
     private static unsafe napi_value InvokeJSGetter(napi_env env, napi_callback_info callbackInfo)
     {
         return InvokeCallback<JSPropertyDescriptor>(
-            env, callbackInfo, JSValueScopeType.Callback, (propertyDescriptor) => new(
+            env, callbackInfo, (propertyDescriptor) => new(
                 propertyDescriptor.Name,
                 propertyDescriptor.Getter!,
                 propertyDescriptor.Data,
@@ -1248,7 +1248,7 @@ public readonly struct JSValue : IJSValue<JSValue>
     private static napi_value InvokeJSSetter(napi_env env, napi_callback_info callbackInfo)
     {
         return InvokeCallback<JSPropertyDescriptor>(
-            env, callbackInfo, JSValueScopeType.Callback, (propertyDescriptor) => new(
+            env, callbackInfo, (propertyDescriptor) => new(
                 propertyDescriptor.Name,
                 propertyDescriptor.Setter!,
                 propertyDescriptor.Data,
@@ -1258,18 +1258,11 @@ public readonly struct JSValue : IJSValue<JSValue>
     private static unsafe napi_value InvokeCallback<TDescriptor>(
         napi_env env,
         napi_callback_info callbackInfo,
-        JSValueScopeType scopeType,
         Func<TDescriptor, JSCallbackDescriptor> getCallbackDescriptor)
     {
-        // A callback normally inherits its context from the parent scope on the thread-static
-        // stack. When there is none (the native host dispatches initialize/dispose with no
-        // persistent scope), recover the context from env instance data and adopt it.
-        JSRuntimeContext? parentlessContext = JSValueScope.CurrentOrNull is null
-            ? JSRuntimeContext.FromEnv(env)
-            : null;
-        using var scope = parentlessContext is not null
-            ? new JSValueScope(scopeType, parentlessContext)
-            : new JSValueScope(scopeType, env, runtime: default);
+        // The scope references the context inherited from the parent scope, or -- when the native
+        // host dispatches a callback with no scope on the thread -- recovered from env instance data.
+        using var scope = JSValueScope.CreateRuntimeScope(env);
         try
         {
             JSCallbackArgs.GetDataAndLength(scope, callbackInfo, out object? data, out int length);
@@ -1335,7 +1328,7 @@ public readonly struct JSValue : IJSValue<JSValue>
         {
             // TODO: [vmoroz] In future we will be not allowed to run JS in finalizers.
             // We must remove creation of the scope.
-            using var scope = new JSValueScope(JSValueScopeType.Callback, context);
+            using var scope = JSValueScope.CreateRuntimeScope(env, context);
             ((Action)gcHandle.Target!)();
         }
         finally

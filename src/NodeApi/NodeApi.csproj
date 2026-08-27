@@ -26,6 +26,8 @@
   <ItemGroup>
     <!-- The managed host shares the internal instance-data opt-out and scope plumbing. -->
     <InternalsVisibleTo Include="Microsoft.JavaScript.NodeApi.DotNetHost" />
+    <!-- Tests exercise the internal scope enum, scope types, and the runtime-context ctor. -->
+    <InternalsVisibleTo Include="Microsoft.JavaScript.NodeApi.Test" />
   </ItemGroup>
 
   <ItemGroup Condition=" $(NetFramework) OR $(NetStandard) ">
