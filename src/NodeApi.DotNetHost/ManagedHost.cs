@@ -40,7 +40,7 @@ public sealed class ManagedHost : JSEventEmitter, IDisposable
     private readonly AssemblyLoadContext _loadContext = new(name: default);
 #endif
 
-    private JSValueScope? _rootScope;
+    private JSRuntimeContext? _context;
 
     /// <summary>
     /// Component that dynamically exports types from loaded assemblies.
@@ -177,10 +177,14 @@ public sealed class ManagedHost : JSEventEmitter, IDisposable
         napi_env env = new((nint)ulong.Parse(args[0], NumberStyles.HexNumber));
         napi_value exports = new((nint)ulong.Parse(args[1], NumberStyles.HexNumber));
         napi_value* pResult = (napi_value*)(nint)ulong.Parse(args[2], NumberStyles.HexNumber);
+        ManagedHostRegistration* registration = args.Length > 3 ?
+            (ManagedHostRegistration*)(nint)ulong.Parse(args[3], NumberStyles.HexNumber) : null;
 #else
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static napi_value InitializeModule(napi_env env, napi_value exports)
+    public static unsafe napi_value InitializeModule(
+        napi_env env, napi_value exports, nint registrationPtr)
     {
+        ManagedHostRegistration* registration = (ManagedHostRegistration*)registrationPtr;
         Trace($"> ManagedHost.InitializeModule({env.Handle:X8})");
         Trace($"    .NET Runtime version: {Environment.Version}");
 #endif
@@ -198,7 +202,13 @@ public sealed class ManagedHost : JSEventEmitter, IDisposable
             runtime = new TracingJSRuntime(runtime, trace);
         }
 
-        JSValueScope scope = new(JSValueScopeType.Root, env, runtime);
+        // The managed host registers its context in the environment instance-data block (at the
+        // module slot). When hosted, the native host owns that block and its finalizer signals
+        // environment teardown, so the managed context is a non-owner: it writes its own slot but
+        // does not claim the finalizer, and is disposed via the registration notification below.
+        bool hosted = registration != null;
+        JSRuntimeContext context = new(env, runtime);
+        using JSValueScope scope = JSValueScope.CreateRuntimeScope(env, context);
 
         try
         {
@@ -219,8 +229,19 @@ public sealed class ManagedHost : JSEventEmitter, IDisposable
 
             ManagedHost host = new(exportsObject)
             {
-                _rootScope = scope
+                _context = context
             };
+
+            if (hosted)
+            {
+                // Root the managed host for the environment lifetime and give the native host a
+                // native callback to invoke at teardown (never a JS call -- see OnEnvironmentFinalize).
+                registration->AddonGCHandle = (nint)GCHandle.Alloc(host);
+#if !(NETFRAMEWORK || NETSTANDARD)
+                registration->OnEnvFinalize =
+                    (nint)(delegate* unmanaged[Cdecl]<nint, void>)&OnEnvironmentFinalize;
+#endif
+            }
 
             Trace("< ManagedHost.InitializeModule()");
         }
@@ -236,6 +257,62 @@ public sealed class ManagedHost : JSEventEmitter, IDisposable
 #else
         return exports;
 #endif
+    }
+
+#if !(NETFRAMEWORK || NETSTANDARD)
+    /// <summary>
+    /// Called natively by the native host when the environment is being torn down. Runs during
+    /// environment finalization where calling into JavaScript is forbidden, so it touches only
+    /// managed state.
+    /// </summary>
+    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+    private static void OnEnvironmentFinalize(nint addon) => OnEnvironmentFinalizeCore(addon);
+#else
+    /// <summary>
+    /// Called by the native host (through the default AppDomain) when the environment is being
+    /// torn down. Runs during environment finalization where calling into JavaScript is forbidden,
+    /// so it touches only managed state.
+    /// </summary>
+    public static int OnEnvironmentFinalize(string argument)
+    {
+        OnEnvironmentFinalizeCore((nint)ulong.Parse(argument, NumberStyles.HexNumber));
+        return 0;
+    }
+#endif
+
+    private static void OnEnvironmentFinalizeCore(nint addon)
+    {
+        if (addon == default)
+        {
+            return;
+        }
+
+        GCHandle handle = GCHandle.FromIntPtr(addon);
+        try
+        {
+            (handle.Target as ManagedHost)?.DisposeOnEnvironmentFinalize();
+        }
+        catch (Exception ex)
+        {
+            Trace($"Failed to dispose managed host on environment finalize: {ex}");
+        }
+        finally
+        {
+            handle.Free();
+        }
+    }
+
+    /// <summary>
+    /// Disposes the runtime context in response to environment teardown. No JavaScript may be
+    /// called here; disposing the context marks it disposed (so any late cross-thread post becomes
+    /// a no-op) and frees its GC handles. The context's references are reclaimed by Node as the
+    /// environment is torn down.
+    /// </summary>
+    private void DisposeOnEnvironmentFinalize()
+    {
+        JSRuntimeContext? context = _context;
+        _context = null;
+        context?.Dispose();
     }
 
     /// <summary>
@@ -592,8 +669,8 @@ public sealed class ManagedHost : JSEventEmitter, IDisposable
     {
         if (disposing)
         {
-            _rootScope?.Dispose();
-            _rootScope = null;
+            _context?.Dispose();
+            _context = null;
 
 #if NETFRAMEWORK || NETSTANDARD
             AppDomain.CurrentDomain.AssemblyResolve -= OnResolvingAssembly;

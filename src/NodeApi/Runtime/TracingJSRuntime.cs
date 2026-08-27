@@ -377,12 +377,17 @@ public class TracingJSRuntime : JSRuntime
         <napi_env, napi_callback_info, napi_value> s_traceSetterCallback = &TraceSetterCallback;
 #endif
 
+    // Like InvokeCallback (which these replace when tracing is on), the scope references the context
+    // inherited from the parent scope, or recovered from env instance data when there is none.
+    private static JSValueScope CreateCallbackScope(napi_env env)
+        => JSValueScope.CreateRuntimeScope(env);
+
 #if UNMANAGED_DELEGATES
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
 #endif
     private static unsafe napi_value TraceFunctionCallback(napi_env env, napi_callback_info cbinfo)
     {
-        using var scope = new JSValueScope(JSValueScopeType.Callback);
+        using JSValueScope scope = CreateCallbackScope(env);
         return ((TracingJSRuntime)scope.Runtime).TraceCallback<JSCallbackDescriptor>(
             scope, cbinfo, (descriptor) => descriptor);
     }
@@ -392,13 +397,13 @@ public class TracingJSRuntime : JSRuntime
 #endif
     private static unsafe napi_value TraceMethodCallback(napi_env env, napi_callback_info cbinfo)
     {
-        using var scope = new JSValueScope(JSValueScopeType.Callback);
+        using JSValueScope scope = CreateCallbackScope(env);
         return ((TracingJSRuntime)scope.Runtime).TraceCallback<JSPropertyDescriptor>(
             scope, cbinfo, (propertyDescriptor) => new(
                 propertyDescriptor.Name,
                 propertyDescriptor.Method!,
                 propertyDescriptor.Data,
-                propertyDescriptor.ModuleContext));
+                propertyDescriptor.ModuleHolder));
     }
 
 #if UNMANAGED_DELEGATES
@@ -406,13 +411,13 @@ public class TracingJSRuntime : JSRuntime
 #endif
     private static unsafe napi_value TraceGetterCallback(napi_env env, napi_callback_info cbinfo)
     {
-        using var scope = new JSValueScope(JSValueScopeType.Callback);
+        using JSValueScope scope = CreateCallbackScope(env);
         return ((TracingJSRuntime)scope.Runtime).TraceCallback<JSPropertyDescriptor>(
             scope, cbinfo, (propertyDescriptor) => new(
                 propertyDescriptor.Name,
                 propertyDescriptor.Getter!,
                 propertyDescriptor.Data,
-                propertyDescriptor.ModuleContext));
+                propertyDescriptor.ModuleHolder));
     }
 
 #if UNMANAGED_DELEGATES
@@ -420,13 +425,13 @@ public class TracingJSRuntime : JSRuntime
 #endif
     private static unsafe napi_value TraceSetterCallback(napi_env env, napi_callback_info cbinfo)
     {
-        using var scope = new JSValueScope(JSValueScopeType.Callback);
+        using JSValueScope scope = CreateCallbackScope(env);
         return ((TracingJSRuntime)scope.Runtime).TraceCallback<JSPropertyDescriptor>(
             scope, cbinfo, (propertyDescriptor) => new(
                 propertyDescriptor.Name,
                 propertyDescriptor.Setter!,
                 propertyDescriptor.Data,
-                propertyDescriptor.ModuleContext));
+                propertyDescriptor.ModuleHolder));
     }
 
     /// <summary>

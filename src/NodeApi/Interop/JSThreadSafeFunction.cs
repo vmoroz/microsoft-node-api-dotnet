@@ -231,7 +231,7 @@ public class JSThreadSafeFunction
 
         try
         {
-            using JSValueScope scope = new(JSValueScopeType.Callback, env, runtime: null);
+            using JSValueScope scope = JSValueScope.CreateRuntimeScope(env);
 
             object? callbackData = null;
             if (data != default)
@@ -265,7 +265,9 @@ public class JSThreadSafeFunction
 
         try
         {
-            using JSValueScope scope = new(JSValueScopeType.Callback, env, runtime: null);
+            // Dispatched on the JS thread; the scope references the context inherited from the
+            // parent scope, or recovered from env instance data when there is none.
+            using JSValueScope scope = JSValueScope.CreateRuntimeScope(env);
 
             if (data != default)
             {
