@@ -495,10 +495,11 @@ internal unsafe partial class NativeHost : IDisposable
         exports.SetProperty("require", require);
         exports.SetProperty("import", import);
 
-        // Define a dispose method implemented by the native host that closes the CLR context.
-        // The managed host proxy will pass through dispose calls to this callback.
+        // The dispose method runs the full idempotent host disposal -- notifying the managed host
+        // before closing the runtime-host channel -- so on .NET Framework (which notifies managed
+        // code only through that channel) the managed registration is released, not stranded.
         exports.DefineProperties(new JSPropertyDescriptor(
-            "dispose", (_) => { CloseRuntimeHost(); return default; }));
+            "dispose", (_) => { Dispose(); return default; }));
 
         // Invoke the managed host initialize method. It defines properties on the exports object
         // and fills in the registration so the native host can keep the managed host alive and
