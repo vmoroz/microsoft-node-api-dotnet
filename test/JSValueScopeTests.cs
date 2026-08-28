@@ -303,6 +303,28 @@ public class JSValueScopeTests
             () => JSValueScope.CreateRuntimeScope(env, context));
     }
 
+    [Fact]
+    public void SynchronizationContextRejectsLazyCreateWhenContextNotCurrent()
+    {
+        napi_env env = new(Environment.CurrentManagedThreadId);
+        var contextA = new JSRuntimeContext(env, _mockRuntime); // no sync context -> lazy
+        var contextB = new JSRuntimeContext(
+            env, _mockRuntime, new MockJSRuntime.SynchronizationContext());
+
+        using (JSValueScope.CreateRuntimeScope(env, contextB))
+        {
+            // contextB is current, so lazily creating contextA's sync context (which would capture
+            // the current scope's environment) must be rejected.
+            Assert.Throws<InvalidOperationException>(() => contextA.SynchronizationContext);
+        }
+
+        contextA.Dispose();
+
+        // After disposal, lazy creation is rejected too.
+        Assert.Throws<ObjectDisposedException>(() => contextA.SynchronizationContext);
+        contextB.Dispose();
+    }
+
     // The module instance is captured through a shared holder: descriptors take the holder during
     // initialization (before the instance exists) and observe the instance once dispatch assigns it.
     // Nested handle/escapable scopes inherit the same holder, so Current.Module round-trips through it.

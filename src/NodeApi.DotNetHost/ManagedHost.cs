@@ -260,7 +260,10 @@ public sealed class ManagedHost : JSEventEmitter, IDisposable
             Trace($"Failed to load CLR managed host module: {ex}");
             try
             {
-                JSError.ThrowError(ex);
+                // Report a stackless error: this context is disposed below, so an error carrying
+                // the usual lazy context-backed `stack` getter would fault when JavaScript later
+                // reads `stack` (callback dispatch could not resolve the disposed context).
+                JSError.ThrowError(ex.ToString());
             }
             finally
             {

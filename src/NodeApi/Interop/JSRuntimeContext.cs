@@ -230,11 +230,33 @@ public sealed class JSRuntimeContext : IDisposable
 
     /// <summary>
     /// Gets the synchronization context that marshals callbacks and continuations to the JS thread.
-    /// A default one is created on first access, which happens while a scope for this context is
-    /// current, because creating it requires the current scope's runtime and environment.
+    /// A default one is created on first access, which must happen while a scope for this context is
+    /// current, because creating it captures the current scope's runtime and environment.
     /// </summary>
     public JSSynchronizationContext SynchronizationContext
-        => _synchronizationContext ??= JSSynchronizationContext.Create();
+    {
+        get
+        {
+            if (_synchronizationContext is not null)
+            {
+                return _synchronizationContext;
+            }
+
+            // Lazy creation captures the CURRENT scope's env/thread, so it must run only while this
+            // context is current -- otherwise it would bind this context to a different environment.
+            if (IsDisposed)
+            {
+                throw new ObjectDisposedException(nameof(JSRuntimeContext));
+            }
+            if (JSValueScope.Current.RuntimeContext != this)
+            {
+                throw new InvalidOperationException(
+                    "The synchronization context must be created while its runtime context is current.");
+            }
+
+            return _synchronizationContext = JSSynchronizationContext.Create();
+        }
+    }
 
     /// <summary>
     /// Creates a runtime context for a JS environment. Used by AOT module entry points and other
