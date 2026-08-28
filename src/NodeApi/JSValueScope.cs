@@ -198,6 +198,16 @@ public sealed class JSValueScope : IDisposable
         }
 
         _env = context.UncheckedEnvironmentHandle;
+
+        // A runtime context is bound to the thread that created it (its env's JS thread); entering it
+        // from another thread would allow napi to be called off that thread.
+        if (context.OwningThreadId != Environment.CurrentManagedThreadId)
+        {
+            throw new JSInvalidThreadAccessException(
+                _parentScope,
+                "A runtime context may be entered only on the thread that created it.");
+        }
+
         ThreadId = Environment.CurrentManagedThreadId;
         Runtime = context.Runtime;
 

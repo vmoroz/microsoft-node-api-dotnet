@@ -275,6 +275,21 @@ public class JSValueScopeTests
         }).Wait();
     }
 
+    [Fact]
+    public void EnterRuntimeContextFromDifferentThreadThrows()
+    {
+        napi_env env = new(Environment.CurrentManagedThreadId);
+        var context = new JSRuntimeContext(
+            env, _mockRuntime, new MockJSRuntime.SynchronizationContext());
+
+        // A runtime context may be entered only on the thread that created it.
+        TestUtils.RunInThread(() =>
+        {
+            Assert.Throws<JSInvalidThreadAccessException>(
+                () => JSValueScope.CreateRuntimeScope(env, context));
+        }).Wait();
+    }
+
     // The module instance is captured through a shared holder: descriptors take the holder during
     // initialization (before the instance exists) and observe the instance once dispatch assigns it.
     // Nested handle/escapable scopes inherit the same holder, so Current.Module round-trips through it.

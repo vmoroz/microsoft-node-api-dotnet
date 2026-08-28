@@ -164,6 +164,12 @@ public sealed class JSRuntimeContext : IDisposable
     /// </summary>
     internal nint ContextHandle { get; }
 
+    /// <summary>
+    /// The managed thread that constructed this context — its environment's JS thread. A runtime
+    /// scope may be entered only on this thread.
+    /// </summary>
+    internal int OwningThreadId { get; }
+
     public static explicit operator napi_env(JSRuntimeContext context)
     {
         if (context is null) throw new ArgumentNullException(nameof(context));
@@ -255,6 +261,7 @@ public sealed class JSRuntimeContext : IDisposable
 
         UncheckedEnvironmentHandle = env;
         Runtime = runtime;
+        OwningThreadId = Environment.CurrentManagedThreadId;
         ContextHandle = (nint)GCHandle.Alloc(this);
         RegisterInstanceData(env, runtime);
 
