@@ -116,15 +116,18 @@ one every module's callbacks resolve.
   `napi_ref`). A strong reference keeps the value alive; a weak one lets it be collected and resolves
   to nothing afterward. A `JSReference` is itself owned by a context and released with it.
 
-### Finalizers run during teardown — no JS allowed
+### Finalizers and teardown — no JS once the context is disposed
 
-A finalizer (for a wrapped .NET object, an external, or a reference) may run while the environment is
-being torn down, where **calling into JavaScript is forbidden**. Finalizer code in this library
-follows two rules:
+A finalizer (for a wrapped .NET object, an external, or a reference) may run during normal GC while
+the environment is still alive, or while the environment is being torn down. **Once the context is
+disposed at environment teardown, calling into JavaScript is forbidden.** Finalizer code in this
+library follows two rules:
 
 1. **Resolve the context from the env**, via `JSRuntimeContext.FromEnv(env)` — never by dereferencing
    a finalize hint that may already be freed. If `FromEnv` returns no live context (the slot was
-   cleared at teardown), the finalizer only frees its own native handle and does no JS work.
+   cleared at teardown), the finalizer only frees its own native handle and does no JS work. While the
+   context is still live, a finalizer action may run — for example `JSValue.CallFinalizeAction` opens a
+   runtime scope to invoke the user action — so this rule is what keeps teardown itself JS-free.
 2. **Never assume ordering** among the env's finalizers. Node drains wrapped-object finalizers in no
    guaranteed order, so a finalizer must tolerate the context's slot already being cleared (rule 1).
    The instance-data finalizer frees the block only after every context on the env is disposed.
