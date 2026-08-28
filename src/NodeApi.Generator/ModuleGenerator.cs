@@ -295,7 +295,7 @@ public class ModuleGenerator : SourceGenerator, ISourceGenerator
         s += $"public static napi_value _{ModuleInitializeMethodName}(napi_env env, napi_value exports)";
         s += "{";
         s += "JSRuntimeContext context = JSRuntimeContext.Create(env);";
-        s += "using var moduleScope = JSValueScope.CreateRuntimeScope(env, context);";
+        s += "using var moduleScope = JSValueScope.CreateModuleScope(env, context);";
         s += $"return {ModuleExportsMethodName}(moduleScope, exports);";
         s += "}";
         s += "#endif";
@@ -305,7 +305,7 @@ public class ModuleGenerator : SourceGenerator, ISourceGenerator
         // module; the scope resolves the runtime context from that host.
         s += $"public static napi_value {ModuleInitializeMethodName}(napi_env env, napi_value exports)";
         s += "{";
-        s += "using var moduleScope = JSValueScope.CreateRuntimeScope(env);";
+        s += "using var moduleScope = JSValueScope.CreateModuleScope(env);";
         s += $"return {ModuleExportsMethodName}(moduleScope, exports);";
         s += "}";
         s++;

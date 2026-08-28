@@ -148,6 +148,19 @@ public sealed class JSValueScope : IDisposable
         => new(env, context);
 
     /// <summary>
+    /// Creates a <see cref="JSValueScopeType.RuntimeContext" /> scope that starts a fresh module
+    /// boundary: it references the same <see cref="JSRuntimeContext" /> (inherited or supplied) but
+    /// begins a new module holder, so each loaded module resolves its own module instance via
+    /// <see cref="Module" />.
+    /// </summary>
+    /// <param name="env">The JS environment handle.</param>
+    /// <param name="context">The runtime context to reference. When null it is inherited from the
+    /// parent scope, or recovered from the environment instance data.</param>
+    public static JSValueScope CreateModuleScope(
+        napi_env env = default, JSRuntimeContext? context = null)
+        => new(env, context, moduleBoundary: true);
+
+    /// <summary>
     /// Creates a napi handle scope nested within the current scope. JS values created within it
     /// are released when it is disposed, unless held by a <see cref="JSReference" />.
     /// </summary>
@@ -161,9 +174,10 @@ public sealed class JSValueScope : IDisposable
 
     /// <summary>
     /// Creates a <see cref="JSValueScopeType.RuntimeContext" /> scope that references an existing
-    /// <see cref="JSRuntimeContext" /> (it never creates one).
+    /// <see cref="JSRuntimeContext" /> (it never creates one). When <paramref name="moduleBoundary" />
+    /// is true it starts a fresh module holder even if the context is inherited from the parent.
     /// </summary>
-    private JSValueScope(napi_env env, JSRuntimeContext? context)
+    private JSValueScope(napi_env env, JSRuntimeContext? context, bool moduleBoundary = false)
     {
         ScopeType = JSValueScopeType.RuntimeContext;
         _parentScope = CurrentOrNull;
@@ -187,9 +201,10 @@ public sealed class JSValueScope : IDisposable
         ThreadId = Environment.CurrentManagedThreadId;
         Runtime = context.Runtime;
 
-        // A nested runtime scope that continues the parent's context inherits its module holder;
-        // only a root/module boundary (a new or explicitly-provided context) starts a fresh one.
-        ModuleHolder = _parentScope?.RuntimeContext == context
+        // A nested runtime scope that continues the parent's context inherits its module holder; a
+        // module boundary, or a root with a new/explicit context, starts a fresh one so each loaded
+        // module resolves its own module instance.
+        ModuleHolder = !moduleBoundary && _parentScope?.RuntimeContext == context
             ? _parentScope.ModuleHolder
             : new StrongBox<object?>();
 
