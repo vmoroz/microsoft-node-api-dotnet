@@ -190,9 +190,16 @@ public sealed class JSRuntimeContext : IDisposable
         }
 
         nint slotHandle = ((nint*)instanceData)[s_instanceDataSlot];
-        return slotHandle == default
-            ? null
-            : GCHandle.FromIntPtr(slotHandle).Target as JSRuntimeContext;
+        if (slotHandle == default)
+        {
+            return null;
+        }
+
+        // Resolve the context only if it actually belongs to this env. The runtime that reads the
+        // instance data is a process-wide static, so a stale or foreign registration could point at
+        // another env's block; a context whose env does not match must not be returned.
+        JSRuntimeContext? context = GCHandle.FromIntPtr(slotHandle).Target as JSRuntimeContext;
+        return context is not null && context.UncheckedEnvironmentHandle == env ? context : null;
     }
 
     /// <summary>
