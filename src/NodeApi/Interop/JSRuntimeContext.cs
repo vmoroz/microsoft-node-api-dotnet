@@ -272,9 +272,8 @@ public sealed class JSRuntimeContext : IDisposable
         runtime.GetInstanceData(env, out nint instanceData).ThrowIfFailed();
         if (instanceData == default)
         {
-            // Retained for the env's lifetime, never freed here or by the finalizer: a late
-            // wrapped-object finalizer may still read a cleared slot via FromEnv after teardown
-            // (see FinalizeInstanceData), so freeing this block would risk a use-after-free.
+            // One block per env, freed by FinalizeInstanceData when the last context on the env is
+            // disposed at teardown.
             instanceData = Marshal.AllocHGlobal(IntPtr.Size * InstanceDataSlotCount);
             for (int i = 0; i < InstanceDataSlotCount; i++)
             {
@@ -306,9 +305,7 @@ public sealed class JSRuntimeContext : IDisposable
         // Runs during env teardown, where calling into JS is forbidden. Dispose the owning
         // runtime's context (which clears its slot and frees its rooting GCHandle). Only this
         // runtime's slot is read, never the other runtime's (whose GCHandle belongs to a separate
-        // GC heap). The block is intentionally not freed: a wrapped-object finalizer may still run
-        // after this and resolve the context via FromEnv, which reads this block; a freed block
-        // would be a use-after-free, whereas a cleared slot safely resolves to no context.
+        // GC heap).
         nint slotHandle = ((nint*)data)[s_instanceDataSlot];
         if (slotHandle != default)
         {
@@ -321,6 +318,20 @@ public sealed class JSRuntimeContext : IDisposable
                 // A finalizer must never throw; teardown continues regardless.
             }
         }
+
+        // Free the shared block once the last context on the env is gone (all slots cleared);
+        // disposing a host context cascades synchronously to the other slot. Do not null it out
+        // via napi_set_instance_data: that deletes this very TrackedFinalizer, which Node then
+        // deletes again (double free).
+        for (int i = 0; i < InstanceDataSlotCount; i++)
+        {
+            if (((nint*)data)[i] != default)
+            {
+                return;
+            }
+        }
+
+        Marshal.FreeHGlobal(data);
     }
 
     /// <summary>
@@ -912,10 +923,18 @@ public sealed class JSRuntimeContext : IDisposable
     {
         if (disposable is null) throw new ArgumentNullException(nameof(disposable));
         _moduleDisposables ??= new();
-        if (!_moduleDisposables.Contains(disposable))
+
+        // Dedupe by identity, not Equals: a module class may override equality, but each distinct
+        // instance must be disposed once.
+        foreach (IDisposable existing in _moduleDisposables)
         {
-            _moduleDisposables.Add(disposable);
+            if (ReferenceEquals(existing, disposable))
+            {
+                return;
+            }
         }
+
+        _moduleDisposables.Add(disposable);
     }
 
     public void Dispose()
@@ -969,10 +988,9 @@ public sealed class JSRuntimeContext : IDisposable
             }
         }
 
-        // Remove this context's root so it can be collected: clear its instance-data slot (a late
-        // wrapped-object finalizer then resolves no context via FromEnv and frees only its own
-        // handle) and free the rooting GCHandle. The block is left allocated (see
-        // FinalizeInstanceData) so a late FromEnv reads a cleared slot rather than freed memory.
+        // Remove this context's root so it can be collected: clear its instance-data slot (a
+        // concurrent FromEnv then resolves no context) and free the rooting GCHandle. The shared
+        // block itself is freed by FinalizeInstanceData once every context on the env is gone.
         if (ContextHandle != default)
         {
             Runtime.GetInstanceData(UncheckedEnvironmentHandle, out nint instanceData);

@@ -146,6 +146,40 @@ public class JSValueScopeTests
         Assert.Equal(1, moduleB.DisposeCount);
     }
 
+    private sealed class EqualDisposable : IDisposable
+    {
+        public int DisposeCount { get; private set; }
+
+        public void Dispose() => DisposeCount++;
+
+        // All instances compare equal, to prove module disposables dedupe by identity, not Equals.
+        public override bool Equals(object? obj) => obj is EqualDisposable;
+
+        public override int GetHashCode() => 0;
+    }
+
+    [Fact]
+    public void ModuleDisposablesAreDedupedByIdentityNotEquality()
+    {
+        var moduleA = new EqualDisposable();
+        var moduleB = new EqualDisposable();
+        Assert.True(moduleA.Equals(moduleB));
+
+        napi_env env = new(Environment.CurrentManagedThreadId);
+        var context = new JSRuntimeContext(
+            env, _mockRuntime, new MockJSRuntime.SynchronizationContext());
+
+        context.AddModuleDisposable(moduleA);
+        context.AddModuleDisposable(moduleB);
+        context.AddModuleDisposable(moduleA); // Re-adding the same instance is a no-op.
+
+        context.Dispose();
+
+        // Both distinct instances are disposed once, despite comparing equal.
+        Assert.Equal(1, moduleA.DisposeCount);
+        Assert.Equal(1, moduleB.DisposeCount);
+    }
+
     [Fact]
     public void AccessValueFromClosedScope()
     {

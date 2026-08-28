@@ -255,7 +255,17 @@ public sealed class ManagedHost : JSEventEmitter, IDisposable
         catch (Exception ex)
         {
             Trace($"Failed to load CLR managed host module: {ex}");
-            JSError.ThrowError(ex);
+            try
+            {
+                JSError.ThrowError(ex);
+            }
+            finally
+            {
+                // Failed init: nothing else disposes this context (when hosted, the native host
+                // never received a teardown callback), so dispose it here to release its slot
+                // GCHandle, synchronization context, and resolve handlers.
+                context.Dispose();
+            }
         }
 
 #if NETFRAMEWORK || NETSTANDARD

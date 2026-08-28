@@ -75,9 +75,13 @@ contexts share an env. A runtime **reads and writes only its own slot**, so it n
 how callback dispatch and finalizers recover the context when no scope is yet current on the thread.
 
 At environment teardown the instance-data finalizer disposes the owning context, which **clears its
-slot and frees the rooting `GCHandle`**. The instance-data block itself is intentionally *not*
-freed: a wrapped-object finalizer may still run afterward and call `FromEnv`, and reading a freed
-block would be a use-after-free — whereas reading a **cleared slot** simply resolves to "no context."
+slot and frees the rooting `GCHandle`**. Disposing a host context cascades synchronously to the
+other slot's context, so once every context on the env is gone the finalizer **frees the block**.
+Freeing it there is no less safe than keeping it: a finalizer that called `FromEnv` after the
+instance-data finalizer would already be reading Node's own freed finalizer record (Node does not
+null its instance-data pointer), so retaining the block never protected that case. The block is not
+nulled out via `napi_set_instance_data` — that would delete the finalizer record Node is running and
+then double-free it.
 
 ## JavaScript value scopes
 
@@ -121,9 +125,9 @@ follows two rules:
 1. **Resolve the context from the env**, via `JSRuntimeContext.FromEnv(env)` — never by dereferencing
    a finalize hint that may already be freed. If `FromEnv` returns no live context (the slot was
    cleared at teardown), the finalizer only frees its own native handle and does no JS work.
-2. **Never assume ordering** between an individual wrapped-object finalizer and the instance-data
-   finalizer. Node drains its pending finalizers without a guaranteed order relative to instance-data
-   finalization, which is exactly why the context block is retained after its slot is cleared.
+2. **Never assume ordering** among the env's finalizers. Node drains wrapped-object finalizers in no
+   guaranteed order, so a finalizer must tolerate the context's slot already being cleared (rule 1).
+   The instance-data finalizer frees the block only after every context on the env is disposed.
 
 ## See also
 
