@@ -547,16 +547,14 @@ internal unsafe partial class NativeHost : IDisposable
 
     public void Dispose()
     {
-        // Called at environment teardown (the NativeHost is a disposable annotation on the host
-        // context) and by the explicit JS dispose() hook while the environment is still alive.
-        // Notify the managed host (a native call), then close this environment's CLR host.
+        // Called at env teardown (disposable annotation on the host context) and by the JS dispose() hook.
         NotifyManagedHostEnvironmentFinalize();
         CloseRuntimeHost();
         _addonGCHandle = default;
         _onEnvFinalize = default;
 
-        // Release the exports reference. On an explicit dispose() (env alive) this frees its napi_ref
-        // on the JS thread; at env teardown the disposed context makes it a safe no-op.
+        // JSReference.Dispose no-ops once its context is disposed, so this frees the napi_ref only on
+        // an explicit dispose() (env alive), never during env-teardown finalization.
         _exports?.Dispose();
         _exports = null;
     }
