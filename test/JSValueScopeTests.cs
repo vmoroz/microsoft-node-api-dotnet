@@ -101,6 +101,51 @@ public class JSValueScopeTests
             () => JSValueScope.CreateEscapableScope());
     }
 
+    private sealed class DisposableModule : IDisposable
+    {
+        public int DisposeCount { get; private set; }
+
+        public void Dispose() => DisposeCount++;
+    }
+
+    [Fact]
+    public void DisposableModulesShareContextAndAreDisposedOnceAtTeardown()
+    {
+        var moduleA = new DisposableModule();
+        var moduleB = new DisposableModule();
+
+        napi_env env = new(Environment.CurrentManagedThreadId);
+        var context = new JSRuntimeContext(
+            env, _mockRuntime, new MockJSRuntime.SynchronizationContext());
+
+        using (JSValueScope.CreateRuntimeScope(env, context))
+        {
+            // Two generated modules loaded into one managed host share this context; each opens a
+            // module-boundary scope and exports its instance.
+            using (JSValueScope.CreateModuleScope(env))
+            {
+                new JSModuleBuilder<DisposableModule>().ExportModule(
+                    moduleA, (JSObject)JSValue.CreateObject());
+            }
+
+            using (JSValueScope.CreateModuleScope(env))
+            {
+                new JSModuleBuilder<DisposableModule>().ExportModule(
+                    moduleB, (JSObject)JSValue.CreateObject());
+            }
+
+            // Loading the second module must not dispose the first.
+            Assert.Equal(0, moduleA.DisposeCount);
+            Assert.Equal(0, moduleB.DisposeCount);
+        }
+
+        context.Dispose();
+
+        // Each module instance is disposed exactly once at env teardown.
+        Assert.Equal(1, moduleA.DisposeCount);
+        Assert.Equal(1, moduleB.DisposeCount);
+    }
+
     [Fact]
     public void AccessValueFromClosedScope()
     {

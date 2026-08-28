@@ -35,11 +35,14 @@ public class JSModuleBuilder<T> : JSPropertyDescriptorList<JSModuleBuilder<T>, T
         // instance existed observe it.
         JSValueScope.Current.ModuleHolder!.Value = module;
 
-        // Honor JSModuleAttribute's contract: an IDisposable module instance is disposed at
-        // environment teardown, when the context disposes its disposable annotations.
-        if (module is IDisposable disposable)
+        // Honor JSModuleAttribute's IDisposable contract. Modules loaded into one host share a
+        // context, and the module-less path passes the context as the module, so append real
+        // instances (not the type-keyed annotation, which would collide on typeof(IDisposable));
+        // the context disposes itself via its own teardown.
+        JSRuntimeContext context = JSValueScope.Current.RuntimeContext;
+        if (module is IDisposable disposable && !ReferenceEquals(module, context))
         {
-            JSValueScope.Current.RuntimeContext.SetDisposableAnnotation(disposable);
+            context.AddModuleDisposable(disposable);
         }
 
         exports.DefineProperties(Properties.ToArray());

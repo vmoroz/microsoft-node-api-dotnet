@@ -276,17 +276,19 @@ public sealed class JSValueScope : IDisposable
         if (IsDisposed) return;
         IsDisposed = true;
 
-        napi_env env = RuntimeContext.EnvironmentHandle;
-
         switch (ScopeType)
         {
+            // Fetch the env only where it is used, so disposing a runtime scope after its context
+            // is torn down does not throw from the checked handle accessor.
             case JSValueScopeType.Handle:
                 Runtime.CloseHandleScope(
-                    env, new napi_handle_scope(_scopeHandle)).ThrowIfFailed();
+                    RuntimeContext.EnvironmentHandle,
+                    new napi_handle_scope(_scopeHandle)).ThrowIfFailed();
                 break;
             case JSValueScopeType.Escapable:
                 Runtime.CloseEscapableHandleScope(
-                    env, new napi_escapable_handle_scope(_scopeHandle)).ThrowIfFailed();
+                    RuntimeContext.EnvironmentHandle,
+                    new napi_escapable_handle_scope(_scopeHandle)).ThrowIfFailed();
                 break;
             default:
                 SynchronizationContext.SetSynchronizationContext(_previousSyncContext);

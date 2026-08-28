@@ -129,6 +129,10 @@ internal class MockJSRuntime : JSRuntime
         return napi_ok;
     }
 
+    public override napi_status DefineProperties(
+        napi_env env, napi_value js_object, ReadOnlySpan<napi_property_descriptor> properties)
+        => napi_ok;
+
     public override napi_status GetValueType(
         napi_env env, napi_value value, out napi_valuetype result)
     {

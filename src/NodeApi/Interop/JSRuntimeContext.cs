@@ -116,6 +116,10 @@ public sealed class JSRuntimeContext : IDisposable
     private Dictionary<Type, object>? _annotations;
     private Dictionary<Type, IDisposable>? _disposableAnnotations;
 
+    // Module instances disposed at context teardown. Unlike the type-keyed annotations, several
+    // modules share one context, so these are appended rather than keyed by type.
+    private List<IDisposable>? _moduleDisposables;
+
     // Env instance-data layout: one GCHandle slot per runtime sharing the napi_env. Slot 0 is the
     // module context (managed host / AOT module / embedding); slot 1 is the native host context.
     // A runtime reads and writes only its own slot, so it never dereferences the other runtime's
@@ -132,10 +136,6 @@ public sealed class JSRuntimeContext : IDisposable
     // JSRuntime is a stateless dispatch v-table, so any registered runtime can read any env's
     // instance data; the process-wide static is intentional and safe.
     private static JSRuntime? s_instanceDataRuntime;
-
-    // A GCHandle rooting this context, used as its env instance-data slot value. It is freed when
-    // the context is disposed at env teardown; wrapped-object finalizers resolve the context via
-    // FromEnv(env) rather than this handle, so freeing it leaves no dangling finalize hint.
 
     internal napi_env EnvironmentHandle
     {
@@ -158,8 +158,9 @@ public sealed class JSRuntimeContext : IDisposable
     internal napi_env UncheckedEnvironmentHandle { get; }
 
     /// <summary>
-    /// Gets the GCHandle that roots this context, for use as a finalize hint by scopes that adopt
-    /// this context.
+    /// Gets the GCHandle that roots this context and is stored in its env instance-data slot. It is
+    /// freed when the context is disposed at env teardown; finalizers resolve the context via
+    /// <see cref="FromEnv"/> rather than this handle, so freeing it leaves nothing dangling.
     /// </summary>
     internal nint ContextHandle { get; }
 
@@ -271,6 +272,9 @@ public sealed class JSRuntimeContext : IDisposable
         runtime.GetInstanceData(env, out nint instanceData).ThrowIfFailed();
         if (instanceData == default)
         {
+            // Retained for the env's lifetime, never freed here or by the finalizer: a late
+            // wrapped-object finalizer may still read a cleared slot via FromEnv after teardown
+            // (see FinalizeInstanceData), so freeing this block would risk a use-after-free.
             instanceData = Marshal.AllocHGlobal(IntPtr.Size * InstanceDataSlotCount);
             for (int i = 0; i < InstanceDataSlotCount; i++)
             {
@@ -899,6 +903,21 @@ public sealed class JSRuntimeContext : IDisposable
         _disposableAnnotations[typeof(T)] = value;
     }
 
+    /// <summary>
+    /// Registers a module instance to be disposed at environment teardown. Unlike
+    /// <see cref="SetDisposableAnnotation{T}"/>, several modules can share one context, so instances
+    /// are appended rather than keyed by type, and each is disposed once.
+    /// </summary>
+    internal void AddModuleDisposable(IDisposable disposable)
+    {
+        if (disposable is null) throw new ArgumentNullException(nameof(disposable));
+        _moduleDisposables ??= new();
+        if (!_moduleDisposables.Contains(disposable))
+        {
+            _moduleDisposables.Add(disposable);
+        }
+    }
+
     public void Dispose()
     {
         if (IsDisposed) return;
@@ -920,6 +939,21 @@ public sealed class JSRuntimeContext : IDisposable
         DisposeReferences(_structMap.Values);
 
         // Disposed after IsDisposed is set, so a late cross-thread post is already a no-op.
+        if (_moduleDisposables != null)
+        {
+            foreach (IDisposable moduleDisposable in _moduleDisposables)
+            {
+                try
+                {
+                    moduleDisposable.Dispose();
+                }
+                catch
+                {
+                    // A failing module disposal must not prevent the rest of teardown.
+                }
+            }
+        }
+
         if (_disposableAnnotations != null)
         {
             foreach (IDisposable annotation in _disposableAnnotations.Values)
