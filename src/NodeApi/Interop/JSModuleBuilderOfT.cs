@@ -34,6 +34,14 @@ public class JSModuleBuilder<T> : JSPropertyDescriptorList<JSModuleBuilder<T>, T
         // Write through the holder the descriptors captured, so callbacks bound before the module
         // instance existed observe it.
         JSValueScope.Current.ModuleHolder!.Value = module;
+
+        // Honor JSModuleAttribute's contract: an IDisposable module instance is disposed at
+        // environment teardown, when the context disposes its disposable annotations.
+        if (module is IDisposable disposable)
+        {
+            JSValueScope.Current.RuntimeContext.SetDisposableAnnotation(disposable);
+        }
+
         exports.DefineProperties(Properties.ToArray());
         return exports;
     }
