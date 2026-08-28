@@ -188,6 +188,13 @@ public sealed class JSValueScope : IDisposable
             ?? throw new InvalidOperationException(
                 "A runtime context could not be resolved for the scope.");
 
+        // A disposed context's environment is torn down; entering it would call Node-API on a
+        // dead env, which the scope's own unchecked handle would not catch.
+        if (context.IsDisposed)
+        {
+            throw new ObjectDisposedException(nameof(JSRuntimeContext));
+        }
+
         // A supplied env must match the resolved context — whether passed explicitly (a root
         // boundary: host, AOT module, or embedding) or inherited from the parent — otherwise this
         // scope would wrap handles from a different environment.

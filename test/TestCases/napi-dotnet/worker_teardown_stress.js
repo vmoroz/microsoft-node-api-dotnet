@@ -23,16 +23,14 @@ if (isMainThread) {
   (async () => {
     for (let i = 0; i < iterations; i++) {
       const worker = new Worker(__filename);
-      await new Promise((resolve, reject) => {
+      // Fail the test on any worker error for the worker's full lifetime -- including during
+      // terminate() -- not just while awaiting readiness (as worker_teardown.js does).
+      worker.on('error', (err) => { throw err; });
+      await new Promise((resolve) => {
         worker.once('message', (message) => {
-          try {
-            assert.strictEqual(message, 'ready');
-            resolve();
-          } catch (err) {
-            reject(err);
-          }
+          assert.strictEqual(message, 'ready');
+          resolve();
         });
-        worker.once('error', reject);
       });
       await worker.terminate();
     }

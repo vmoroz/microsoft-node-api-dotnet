@@ -263,7 +263,18 @@ public sealed class JSRuntimeContext : IDisposable
         Runtime = runtime;
         OwningThreadId = Environment.CurrentManagedThreadId;
         ContextHandle = (nint)GCHandle.Alloc(this);
-        RegisterInstanceData(env, runtime);
+        try
+        {
+            RegisterInstanceData(env, runtime);
+        }
+        catch
+        {
+            // Registration failed before any caller holds this context to dispose it; free the
+            // rooting handle so a failed construction leaks nothing (the block, if allocated, is
+            // freed by RegisterInstanceData).
+            GCHandle.FromIntPtr(ContextHandle).Free();
+            throw;
+        }
 
         _synchronizationContext = synchronizationContext;
     }
@@ -287,11 +298,17 @@ public sealed class JSRuntimeContext : IDisposable
                 ((nint*)instanceData)[i] = default;
             }
 
-            runtime.SetInstanceData(
+            napi_status status = runtime.SetInstanceData(
                 env,
                 instanceData,
                 new napi_finalize(s_finalizeInstanceData),
-                finalizeHint: default).ThrowIfFailed();
+                finalizeHint: default);
+            if (status != napi_status.napi_ok)
+            {
+                // Registration failed, so Node never took ownership of the block; free it here.
+                Marshal.FreeHGlobal(instanceData);
+                status.ThrowIfFailed();
+            }
         }
 
         ((nint*)instanceData)[s_instanceDataSlot] = ContextHandle;

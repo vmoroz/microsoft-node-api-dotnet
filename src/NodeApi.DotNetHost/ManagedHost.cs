@@ -82,17 +82,6 @@ public sealed class ManagedHost : JSEventEmitter, IDisposable
     /// <param name="exports">JS object on which the managed host APIs will be exported.</param>
     public ManagedHost(JSObject exports)
     {
-#if NETFRAMEWORK || NETSTANDARD
-        AppDomain.CurrentDomain.AssemblyResolve += OnResolvingAssembly;
-#else
-        _loadContext.Resolving += OnResolvingAssembly;
-
-        // It shouldn't be necessary to handle resolve events in the default load context.
-        // But TypeBuilder (used by JSInterfaceMarshaller) seems to require it when a nuget
-        // package referenced type is replaced with a system type, as with IAsyncEnumerable.
-        AssemblyLoadContext.Default.Resolving += OnResolvingAssembly;
-#endif
-
         JSValue addListener(JSCallbackArgs args)
         {
             AddListener(eventName: (string)args[0], listener: args[1]);
@@ -145,6 +134,20 @@ public sealed class ManagedHost : JSEventEmitter, IDisposable
         {
             _exportedAssembliesByName.Add(typeof(Console).Assembly.GetName().Name!);
         }
+
+        // Subscribe the process-wide resolve handlers last, after all fallible construction: a
+        // constructor that throws is never registered for disposal, so leaving them subscribed
+        // would root the failed host.
+#if NETFRAMEWORK || NETSTANDARD
+        AppDomain.CurrentDomain.AssemblyResolve += OnResolvingAssembly;
+#else
+        _loadContext.Resolving += OnResolvingAssembly;
+
+        // It shouldn't be necessary to handle resolve events in the default load context.
+        // But TypeBuilder (used by JSInterfaceMarshaller) seems to require it when a nuget
+        // package referenced type is replaced with a system type, as with IAsyncEnumerable.
+        AssemblyLoadContext.Default.Resolving += OnResolvingAssembly;
+#endif
     }
 
     public static bool IsTracingEnabled { get; } =
