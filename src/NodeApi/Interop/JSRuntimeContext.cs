@@ -872,12 +872,24 @@ public sealed class JSRuntimeContext : IDisposable
 
     /// <summary>
     /// Associates an owning annotation with this context, keyed by its type. The context disposes
-    /// it when the context itself is disposed (at environment teardown).
+    /// it when the context itself is disposed (at environment teardown). Replacing an existing
+    /// annotation of the same type disposes the one being displaced.
     /// </summary>
+    /// <exception cref="ObjectDisposedException">The context is already disposed, so the value
+    /// would never be disposed.</exception>
     public void SetDisposableAnnotation<T>(T value) where T : class, IDisposable
     {
         if (value is null) throw new ArgumentNullException(nameof(value));
-        (_disposableAnnotations ??= new())[typeof(T)] = value;
+        if (IsDisposed) throw new ObjectDisposedException(nameof(JSRuntimeContext));
+
+        _disposableAnnotations ??= new();
+        if (_disposableAnnotations.TryGetValue(typeof(T), out IDisposable? existing) &&
+            !ReferenceEquals(existing, value))
+        {
+            existing.Dispose();
+        }
+
+        _disposableAnnotations[typeof(T)] = value;
     }
 
     public void Dispose()
