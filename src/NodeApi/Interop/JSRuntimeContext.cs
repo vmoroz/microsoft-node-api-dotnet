@@ -1046,9 +1046,12 @@ public sealed class JSRuntimeContext : IDisposable
                 {
                     ((nint*)instanceData)[s_instanceDataSlot] = default;
                 }
-            }
 
-            GCHandle.FromIntPtr(ContextHandle).Free();
+                // Free the rooting handle only after clearing its slot; a failed GetInstanceData
+                // would otherwise leave the slot pointing at a freed handle for a later FromEnv or
+                // finalizer to dereference.
+                GCHandle.FromIntPtr(ContextHandle).Free();
+            }
         }
     }
 

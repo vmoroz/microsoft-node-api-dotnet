@@ -256,8 +256,10 @@ internal static class TestBuilder
         Version frameworkVersion = Environment.Version;
         if (frameworkVersion.Major == 4)
         {
-            // .NET 4.x is supported at runtime, but not at build time.
-            // So the global.json at the repo root will determine the SDK.
+            // .NET 4.x builds via the repo-root global.json. Delete any per-TFM global.json another
+            // TFM's host left in the shared directories so it does not override that.
+            File.Delete(Path.Combine(workingDirectory, "global.json"));
+            File.Delete(Path.Combine(Path.GetDirectoryName(projectFilePath)!, "global.json"));
             return;
         }
 
