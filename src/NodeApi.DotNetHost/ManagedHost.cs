@@ -213,10 +213,13 @@ public sealed class ManagedHost : JSEventEmitter, IDisposable
         // does not claim the finalizer, and is disposed via the registration notification below.
         bool hosted = registration != null;
         JSRuntimeContext context = new(env, runtime);
-        using JSValueScope scope = JSValueScope.CreateRuntimeScope(env, context);
 
         try
         {
+            // CreateRuntimeScope lazily builds the sync context and can throw; keep it in the try so
+            // a failure disposes the context instead of leaking it and escaping this entry point.
+            using JSValueScope scope = JSValueScope.CreateRuntimeScope(env, context);
+
             JSObject exportsObject = (JSObject)new JSValue(exports, scope);
 
             // Save the require() and import() functions that were passed in by the init script.
@@ -260,16 +263,12 @@ public sealed class ManagedHost : JSEventEmitter, IDisposable
             Trace($"Failed to load CLR managed host module: {ex}");
             try
             {
-                // Report a stackless error: this context is disposed below, so an error carrying
-                // the usual lazy context-backed `stack` getter would fault when JavaScript later
-                // reads `stack` (callback dispatch could not resolve the disposed context).
-                JSError.ThrowError(ex.ToString());
+                // Throw via the runtime directly: scope creation may have failed, and the disposed
+                // context below would make a scope-bound JSError's lazy stack getter unusable.
+                runtime.ThrowError(env, code: null, ex.ToString());
             }
             finally
             {
-                // Failed init: nothing else disposes this context (when hosted, the native host
-                // never received a teardown callback), so dispose it here to release its slot
-                // GCHandle, synchronization context, and resolve handlers.
                 context.Dispose();
             }
         }

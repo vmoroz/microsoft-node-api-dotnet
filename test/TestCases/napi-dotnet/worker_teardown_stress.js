@@ -26,10 +26,19 @@ if (isMainThread) {
       // Fail the test on any worker error for the worker's full lifetime -- including during
       // terminate() -- not just while awaiting readiness (as worker_teardown.js does).
       worker.on('error', (err) => { throw err; });
-      await new Promise((resolve) => {
+      await new Promise((resolve, reject) => {
         worker.once('message', (message) => {
-          assert.strictEqual(message, 'ready');
-          resolve();
+          try {
+            assert.strictEqual(message, 'ready');
+            resolve();
+          } catch (err) {
+            reject(err);
+          }
+        });
+        // A worker that exits before signaling 'ready' without an error would otherwise leave this
+        // promise pending, letting the test process exit successfully after a failed iteration.
+        worker.once('exit', (code) => {
+          reject(new Error(`Worker exited before signaling ready (code ${code}).`));
         });
       });
       await worker.terminate();
