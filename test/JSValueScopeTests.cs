@@ -368,6 +368,25 @@ public class JSValueScopeTests
         Assert.Null(JSRuntimeContext.FromEnv(env));
     }
 
+    [Fact]
+    public void ContextRootReleasedWhenTeardownStepThrows()
+    {
+        napi_env env = new(Environment.CurrentManagedThreadId);
+        var context = new JSRuntimeContext(env, _mockRuntime, new ThrowingSynchronizationContext());
+
+        // The sync context's Dispose throws, but the slot/root release runs from a finally, so the
+        // context is still unregistered (otherwise its env finalizer could never reclaim it).
+        Assert.Throws<InvalidOperationException>(() => context.Dispose());
+        Assert.Null(JSRuntimeContext.FromEnv(env));
+    }
+
+    private sealed class ThrowingSynchronizationContext : JSSynchronizationContext
+    {
+        public override void Dispose() => throw new InvalidOperationException("teardown failure");
+        public override void OpenAsyncScope() { }
+        public override void CloseAsyncScope() { }
+    }
+
     // The module instance is captured through a shared holder: descriptors take the holder during
     // initialization (before the instance exists) and observe the instance once dispatch assigns it.
     // Nested handle/escapable scopes inherit the same holder, so Current.Module round-trips through it.

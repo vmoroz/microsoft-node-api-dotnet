@@ -553,10 +553,20 @@ internal unsafe partial class NativeHost : IDisposable
     public void Dispose()
     {
         // Called at env teardown (disposable annotation on the host context) and by the JS dispose() hook.
-        NotifyManagedHostEnvironmentFinalize();
+        try
+        {
+            NotifyManagedHostEnvironmentFinalize();
+        }
+        finally
+        {
+            // Clear the registration before the fallible CloseRuntimeHost: the notification frees the
+            // addon GCHandle, so a later retry that re-invoked it would pass an already-freed handle
+            // across the unmanaged finalizer boundary.
+            _addonGCHandle = default;
+            _onEnvFinalize = default;
+        }
+
         CloseRuntimeHost();
-        _addonGCHandle = default;
-        _onEnvFinalize = default;
 
         // JSReference.Dispose no-ops once its context is disposed, so this frees the napi_ref only on
         // an explicit dispose() (env alive), never during env-teardown finalization.

@@ -989,74 +989,79 @@ public sealed class JSRuntimeContext : IDisposable
 
         IsDisposed = true;
 
-        // Dispose an already-created sync context only; never construct one here. Disposal can run
-        // during env finalization when no scope is current, and creating a sync context then would
-        // throw and skip the rest of teardown.
-        _synchronizationContext?.Dispose();
+        try
+        {
+            // Dispose an already-created sync context only; never construct one here. Disposal can
+            // run during env finalization when no scope is current, and creating a sync context then
+            // would throw and skip the rest of teardown.
+            _synchronizationContext?.Dispose();
 
 #if !(NETFRAMEWORK || NETSTANDARD)
-        // ConditionalWeakTable<> is not enumerable in .NET Framework.
-        // The JS references will still be released eventually by their finalizers.
-        DisposeReferences(_objectMap.Select((entry) => entry.Value));
+            // ConditionalWeakTable<> is not enumerable in .NET Framework.
+            // The JS references will still be released eventually by their finalizers.
+            DisposeReferences(_objectMap.Select((entry) => entry.Value));
 #endif
-        DisposeReferences(_classMap.Values);
-        DisposeReferences(_staticClassMap.Values);
-        DisposeReferences(_structMap.Values);
+            DisposeReferences(_classMap.Values);
+            DisposeReferences(_staticClassMap.Values);
+            DisposeReferences(_structMap.Values);
 
-        // Disposed after IsDisposed is set, so a late cross-thread post is already a no-op.
-        if (_moduleDisposables != null)
-        {
-            foreach (IDisposable moduleDisposable in _moduleDisposables)
+            // Disposed after IsDisposed is set, so a late cross-thread post is already a no-op.
+            if (_moduleDisposables != null)
             {
-                try
+                foreach (IDisposable moduleDisposable in _moduleDisposables)
                 {
-                    moduleDisposable.Dispose();
-                }
-                catch
-                {
-                    // A failing module disposal must not prevent the rest of teardown.
-                }
-            }
-        }
-
-        if (_disposableAnnotations != null)
-        {
-            foreach (IDisposable annotation in _disposableAnnotations.Values)
-            {
-                try
-                {
-                    annotation.Dispose();
-                }
-                catch
-                {
-                    // A failing annotation must not prevent the rest of teardown.
-                }
-            }
-        }
-
-        // Remove this context's root so it can be collected: clear its instance-data slot (a
-        // concurrent FromEnv then resolves no context) and free the rooting GCHandle. The shared
-        // block itself is freed by FinalizeInstanceData once every context on the env is gone.
-        if (ContextHandle != default)
-        {
-            Runtime.GetInstanceData(UncheckedEnvironmentHandle, out nint instanceData);
-            if (instanceData != default)
-            {
-                unsafe
-                {
-                    // Clear the slot only if it still holds this context; a newer context created
-                    // for the same env may have replaced it, and clearing then would unregister the
-                    // live context so FromEnv and its env finalizer could no longer reach it.
-                    if (((nint*)instanceData)[s_instanceDataSlot] == ContextHandle)
+                    try
                     {
-                        ((nint*)instanceData)[s_instanceDataSlot] = default;
+                        moduleDisposable.Dispose();
+                    }
+                    catch
+                    {
+                        // A failing module disposal must not prevent the rest of teardown.
                     }
                 }
+            }
 
-                // Free this context's now-unregistered rooting handle. If the slot pointed here it
-                // was cleared above, so no later FromEnv or finalizer can dereference the freed
-                // handle; if a newer context replaced it, that context still owns the slot.
-                GCHandle.FromIntPtr(ContextHandle).Free();
+            if (_disposableAnnotations != null)
+            {
+                foreach (IDisposable annotation in _disposableAnnotations.Values)
+                {
+                    try
+                    {
+                        annotation.Dispose();
+                    }
+                    catch
+                    {
+                        // A failing annotation must not prevent the rest of teardown.
+                    }
+                }
+            }
+        }
+        finally
+        {
+            // Release this context's root even if an earlier teardown step threw, or the context root
+            // and shared instance-data block would leak (a retry no-ops because IsDisposed is already
+            // set). Clear the instance-data slot and free the rooting GCHandle.
+            if (ContextHandle != default)
+            {
+                Runtime.GetInstanceData(UncheckedEnvironmentHandle, out nint instanceData);
+                if (instanceData != default)
+                {
+                    unsafe
+                    {
+                        // Clear the slot only if it still holds this context; a newer context created
+                        // for the same env may have replaced it, and clearing then would unregister
+                        // the live context so FromEnv and its env finalizer could no longer reach it.
+                        if (((nint*)instanceData)[s_instanceDataSlot] == ContextHandle)
+                        {
+                            ((nint*)instanceData)[s_instanceDataSlot] = default;
+                        }
+                    }
+
+                    // Free this context's now-unregistered rooting handle. If the slot pointed here it
+                    // was cleared above, so no later FromEnv or finalizer can dereference the freed
+                    // handle; if a newer context replaced it, that context still owns the slot.
+                    GCHandle.FromIntPtr(ContextHandle).Free();
+                }
             }
         }
     }
