@@ -350,6 +350,24 @@ public class JSValueScopeTests
         }).Wait();
     }
 
+    [Fact]
+    public void DisposingReplacedContextKeepsNewerContextRegistered()
+    {
+        napi_env env = new(Environment.CurrentManagedThreadId);
+        var contextA = new JSRuntimeContext(
+            env, _mockRuntime, new MockJSRuntime.SynchronizationContext());
+        var contextB = new JSRuntimeContext(
+            env, _mockRuntime, new MockJSRuntime.SynchronizationContext());
+
+        // contextB replaced contextA in the env instance-data slot; disposing the older contextA
+        // must not clear contextB's registration.
+        contextA.Dispose();
+        Assert.Same(contextB, JSRuntimeContext.FromEnv(env));
+
+        contextB.Dispose();
+        Assert.Null(JSRuntimeContext.FromEnv(env));
+    }
+
     // The module instance is captured through a shared holder: descriptors take the holder during
     // initialization (before the instance exists) and observe the instance once dispatch assigns it.
     // Nested handle/escapable scopes inherit the same holder, so Current.Module round-trips through it.

@@ -1044,12 +1044,18 @@ public sealed class JSRuntimeContext : IDisposable
             {
                 unsafe
                 {
-                    ((nint*)instanceData)[s_instanceDataSlot] = default;
+                    // Clear the slot only if it still holds this context; a newer context created
+                    // for the same env may have replaced it, and clearing then would unregister the
+                    // live context so FromEnv and its env finalizer could no longer reach it.
+                    if (((nint*)instanceData)[s_instanceDataSlot] == ContextHandle)
+                    {
+                        ((nint*)instanceData)[s_instanceDataSlot] = default;
+                    }
                 }
 
-                // Free the rooting handle only after clearing its slot; a failed GetInstanceData
-                // would otherwise leave the slot pointing at a freed handle for a later FromEnv or
-                // finalizer to dereference.
+                // Free this context's now-unregistered rooting handle. If the slot pointed here it
+                // was cleared above, so no later FromEnv or finalizer can dereference the freed
+                // handle; if a newer context replaced it, that context still owns the slot.
                 GCHandle.FromIntPtr(ContextHandle).Free();
             }
         }
