@@ -20,8 +20,18 @@ public sealed class NodeEmbeddingNodeApiScope : IDisposable
         NodeEmbedding.JSRuntime.EmbeddingRuntimeOpenNodeApiScope(
             runtime.Handle, out _nodeApiScope, out napi_env env)
             .ThrowIfFailed();
-        JSRuntimeContext context = NodeEmbedding.GetOrCreateContext(env);
-        _valueScope = JSValueScope.CreateRuntimeScope(env, context);
+        try
+        {
+            JSRuntimeContext context = NodeEmbedding.GetOrCreateContext(env);
+            _valueScope = JSValueScope.CreateRuntimeScope(env, context);
+        }
+        catch
+        {
+            // A throwing constructor cannot be disposed, so close the native scope opened above
+            // before rethrowing, or it would leak for the lifetime of the embedding runtime.
+            NodeEmbedding.JSRuntime.EmbeddingRuntimeCloseNodeApiScope(runtime.Handle, _nodeApiScope);
+            throw;
+        }
     }
 
     /// <summary>

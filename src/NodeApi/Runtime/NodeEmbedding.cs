@@ -360,6 +360,24 @@ public sealed class NodeEmbedding
     internal static JSRuntimeContext GetOrCreateContext(napi_env env)
         => JSRuntimeContext.FromEnv(env) ?? new JSRuntimeContext(env, JSRuntime);
 
+    // Opens the runtime scope for an embedding callback inside a guarded path: context resolution
+    // (instance-data registration) and scope creation are fallible, and every caller is an
+    // UnmanagedCallersOnly adapter, so a failure is reported through the embedding error path
+    // rather than escaping the native boundary. Returns null (with the last error set) on failure.
+    private static JSValueScope? TryEnterRuntimeScope(napi_env env)
+    {
+        try
+        {
+            JSRuntimeContext context = GetOrCreateContext(env);
+            return JSValueScope.CreateRuntimeScope(env, context);
+        }
+        catch (Exception ex)
+        {
+            JSRuntime.EmbeddingSetLastErrorMessage(ex.Message.AsSpan());
+            return null;
+        }
+    }
+
 #if UNMANAGED_DELEGATES
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
 #endif
@@ -370,8 +388,8 @@ public sealed class NodeEmbedding
         napi_value process,
         napi_value require)
     {
-        JSRuntimeContext context = GetOrCreateContext(env);
-        using var jsValueScope = JSValueScope.CreateRuntimeScope(env, context);
+        using JSValueScope? jsValueScope = TryEnterRuntimeScope(env);
+        if (jsValueScope is null) return;
         try
         {
             var callback = (PreloadCallback)GCHandle.FromIntPtr(cb_data).Target!;
@@ -395,8 +413,8 @@ public sealed class NodeEmbedding
         napi_value require,
         napi_value run_cjs)
     {
-        JSRuntimeContext context = GetOrCreateContext(env);
-        using var jsValueScope = JSValueScope.CreateRuntimeScope(env, context);
+        using JSValueScope? jsValueScope = TryEnterRuntimeScope(env);
+        if (jsValueScope is null) return napi_value.Null;
         try
         {
             var callback = (LoadingCallback)GCHandle.FromIntPtr(cb_data).Target!;
@@ -420,8 +438,8 @@ public sealed class NodeEmbedding
         napi_env env,
         napi_value loading_result)
     {
-        JSRuntimeContext context = GetOrCreateContext(env);
-        using var jsValueScope = JSValueScope.CreateRuntimeScope(env, context);
+        using JSValueScope? jsValueScope = TryEnterRuntimeScope(env);
+        if (jsValueScope is null) return;
         try
         {
             var callback = (LoadedCallback)GCHandle.FromIntPtr(cb_data).Target!;
@@ -444,8 +462,8 @@ public sealed class NodeEmbedding
         nint module_name,
         napi_value exports)
     {
-        JSRuntimeContext context = GetOrCreateContext(env);
-        using var jsValueScope = JSValueScope.CreateRuntimeScope(env, context);
+        using JSValueScope? jsValueScope = TryEnterRuntimeScope(env);
+        if (jsValueScope is null) return napi_value.Null;
         try
         {
             var callback = (InitializeModuleCallback)GCHandle.FromIntPtr(cb_data).Target!;
@@ -513,8 +531,8 @@ public sealed class NodeEmbedding
 #endif
     internal static unsafe void NodeApiRunCallbackAdapter(nint cb_data, napi_env env)
     {
-        JSRuntimeContext context = GetOrCreateContext(env);
-        using var jsValueScope = JSValueScope.CreateRuntimeScope(env, context);
+        using JSValueScope? jsValueScope = TryEnterRuntimeScope(env);
+        if (jsValueScope is null) return;
         try
         {
             var callback = (RunNodeApiCallback)GCHandle.FromIntPtr(cb_data).Target!;
