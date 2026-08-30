@@ -291,6 +291,23 @@ public sealed class JSValueScope : IDisposable
     public void Dispose()
     {
         if (IsDisposed) return;
+
+        // A scope must be disposed on its creating thread and in reverse order of creation: an
+        // off-thread or out-of-order close calls napi on the wrong thread or restores the wrong parent.
+        if (CurrentOrNull != this)
+        {
+            if (CurrentOrNull?._env != _env)
+            {
+                throw new JSInvalidThreadAccessException(
+                    currentScope: CurrentOrNull,
+                    targetScope: this,
+                    "A value scope must be disposed on the thread that created it.");
+            }
+
+            throw new InvalidOperationException(
+                "A value scope cannot be disposed while a scope created within it is still open.");
+        }
+
         IsDisposed = true;
 
         switch (ScopeType)

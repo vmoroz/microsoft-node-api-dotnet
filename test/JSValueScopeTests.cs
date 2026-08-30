@@ -325,6 +325,31 @@ public class JSValueScopeTests
         contextB.Dispose();
     }
 
+    [Fact]
+    public void DisposeScopeWhileNestedScopeOpenThrows()
+    {
+        using JSValueScope runtimeScope = TestRuntimeScope();
+        JSValueScope handleScope = JSValueScope.CreateHandleScope();
+
+        // A scope cannot be disposed while a scope created within it is still open (LIFO order).
+        Assert.Throws<InvalidOperationException>(() => runtimeScope.Dispose());
+
+        // Disposing in the correct reverse order succeeds.
+        handleScope.Dispose();
+    }
+
+    [Fact]
+    public void DisposeScopeFromDifferentThreadThrows()
+    {
+        using JSValueScope runtimeScope = TestRuntimeScope();
+
+        // A scope must be disposed on the thread that created it, not another thread.
+        TestUtils.RunInThread(() =>
+        {
+            Assert.Throws<JSInvalidThreadAccessException>(() => runtimeScope.Dispose());
+        }).Wait();
+    }
+
     // The module instance is captured through a shared holder: descriptors take the holder during
     // initialization (before the instance exists) and observe the instance once dispatch assigns it.
     // Nested handle/escapable scopes inherit the same holder, so Current.Module round-trips through it.
