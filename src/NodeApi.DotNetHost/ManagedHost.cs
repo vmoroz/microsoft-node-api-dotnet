@@ -212,12 +212,13 @@ public sealed class ManagedHost : JSEventEmitter, IDisposable
         // environment teardown, so the managed context is a non-owner: it writes its own slot but
         // does not claim the finalizer, and is disposed via the registration notification below.
         bool hosted = registration != null;
-        JSRuntimeContext context = new(env, runtime);
+        JSRuntimeContext? context = null;
 
         try
         {
-            // CreateRuntimeScope lazily builds the sync context and can throw; keep it in the try so
-            // a failure disposes the context instead of leaking it and escaping this entry point.
+            // Context creation (fallible instance-data registration) and scope creation are inside
+            // the try so a failure returns a JS error instead of escaping this unmanaged entry point.
+            context = new(env, runtime);
             using JSValueScope scope = JSValueScope.CreateRuntimeScope(env, context);
 
             JSObject exportsObject = (JSObject)new JSValue(exports, scope);
@@ -263,13 +264,15 @@ public sealed class ManagedHost : JSEventEmitter, IDisposable
             Trace($"Failed to load CLR managed host module: {ex}");
             try
             {
-                // Throw via the runtime directly: scope creation may have failed, and the disposed
-                // context below would make a scope-bound JSError's lazy stack getter unusable.
+                // Throw via the runtime directly: context or scope creation may have failed, and the
+                // disposed context below would make a scope-bound JSError's lazy stack getter unusable.
                 runtime.ThrowError(env, code: null, ex.ToString());
             }
             finally
             {
-                context.Dispose();
+                // The module-slot context does not own the instance-data finalizer, so a failed init
+                // must dispose it here; tolerate construction not having completed.
+                context?.Dispose();
             }
         }
 

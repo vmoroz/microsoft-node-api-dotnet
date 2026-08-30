@@ -294,9 +294,21 @@ public class ModuleGenerator : SourceGenerator, ISourceGenerator
         s += $"[UnmanagedCallersOnly(EntryPoint = \"{ModuleRegisterFunctionName}\")]";
         s += $"public static napi_value _{ModuleInitializeMethodName}(napi_env env, napi_value exports)";
         s += "{";
+        // Guard the fallible context/module-scope setup (instance-data registration, lazy
+        // sync-context creation) so a failure returns a JS error instead of escaping this
+        // UnmanagedCallersOnly entry point; the catch throws scope-lessly since setup itself failed.
+        s += "try";
+        s += "{";
         s += "JSRuntimeContext context = JSRuntimeContext.Create(env);";
         s += "using var moduleScope = JSValueScope.CreateModuleScope(env, context);";
         s += $"return {ModuleExportsMethodName}(moduleScope, exports);";
+        s += "}";
+        s += "catch (System.Exception ex)";
+        s += "{";
+        s += "System.Console.Error.WriteLine($\"Failed to initialize module: {ex}\");";
+        s += "new Microsoft.JavaScript.NodeApi.Runtime.NodejsRuntime().ThrowError(env, null, ex.ToString());";
+        s += "return exports;";
+        s += "}";
         s += "}";
         s += "#endif";
         s++;
