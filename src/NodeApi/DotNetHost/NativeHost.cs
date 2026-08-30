@@ -226,6 +226,9 @@ internal unsafe partial class NativeHost : IDisposable
             string message = $"Failed to load CLR native host module: {ex}";
             Trace(message);
             // Scope-less throw: context or scope creation may have failed, so no scope exists.
+            // Not disposed here: the host-slot context owns the instance-data finalizer that
+            // disposes it at env teardown even if partly initialized -- unlike the managed host's
+            // module-slot context, whose failure path must dispose it.
             s_jsRuntime.ThrowError(env, code: null, message);
         }
 
