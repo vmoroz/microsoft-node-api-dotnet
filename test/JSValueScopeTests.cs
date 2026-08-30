@@ -373,10 +373,13 @@ public class JSValueScopeTests
     {
         napi_env env = new(Environment.CurrentManagedThreadId);
         var context = new JSRuntimeContext(env, _mockRuntime, new ThrowingSynchronizationContext());
+        var module = new DisposableModule();
+        context.AddModuleDisposable(module);
 
-        // The sync context's Dispose throws, but the slot/root release runs from a finally, so the
-        // context is still unregistered (otherwise its env finalizer could never reclaim it).
+        // The sync context's Dispose throws, but every later teardown phase still runs: the module
+        // disposable is disposed and the context root is released. The failure surfaces after cleanup.
         Assert.Throws<InvalidOperationException>(() => context.Dispose());
+        Assert.Equal(1, module.DisposeCount);
         Assert.Null(JSRuntimeContext.FromEnv(env));
     }
 

@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -989,81 +990,76 @@ public sealed class JSRuntimeContext : IDisposable
 
         IsDisposed = true;
 
-        try
-        {
-            // Dispose an already-created sync context only; never construct one here. Disposal can
-            // run during env finalization when no scope is current, and creating a sync context then
-            // would throw and skip the rest of teardown.
-            _synchronizationContext?.Dispose();
+        // Run every teardown phase even if an earlier one throws, then release the context root and
+        // rethrow the first failure. A throwing phase must not skip a later phase or the root
+        // release: IsDisposed is already set, so a retry returns immediately and could otherwise
+        // strand module instances, annotations, or the context root and its shared block.
+        ExceptionDispatchInfo? firstFailure = null;
+
+        // Dispose an already-created sync context only; never construct one here. Disposal can run
+        // during env finalization when no scope is current, and creating one then would throw.
+        try { _synchronizationContext?.Dispose(); }
+        catch (Exception ex) { firstFailure ??= ExceptionDispatchInfo.Capture(ex); }
 
 #if !(NETFRAMEWORK || NETSTANDARD)
-            // ConditionalWeakTable<> is not enumerable in .NET Framework.
-            // The JS references will still be released eventually by their finalizers.
-            DisposeReferences(_objectMap.Select((entry) => entry.Value));
+        // ConditionalWeakTable<> is not enumerable in .NET Framework; those references are released
+        // by their finalizers instead.
+        try { DisposeReferences(_objectMap.Select((entry) => entry.Value)); }
+        catch (Exception ex) { firstFailure ??= ExceptionDispatchInfo.Capture(ex); }
 #endif
-            DisposeReferences(_classMap.Values);
-            DisposeReferences(_staticClassMap.Values);
-            DisposeReferences(_structMap.Values);
+        try { DisposeReferences(_classMap.Values); }
+        catch (Exception ex) { firstFailure ??= ExceptionDispatchInfo.Capture(ex); }
+        try { DisposeReferences(_staticClassMap.Values); }
+        catch (Exception ex) { firstFailure ??= ExceptionDispatchInfo.Capture(ex); }
+        try { DisposeReferences(_structMap.Values); }
+        catch (Exception ex) { firstFailure ??= ExceptionDispatchInfo.Capture(ex); }
 
-            // Disposed after IsDisposed is set, so a late cross-thread post is already a no-op.
-            if (_moduleDisposables != null)
-            {
-                foreach (IDisposable moduleDisposable in _moduleDisposables)
-                {
-                    try
-                    {
-                        moduleDisposable.Dispose();
-                    }
-                    catch
-                    {
-                        // A failing module disposal must not prevent the rest of teardown.
-                    }
-                }
-            }
-
-            if (_disposableAnnotations != null)
-            {
-                foreach (IDisposable annotation in _disposableAnnotations.Values)
-                {
-                    try
-                    {
-                        annotation.Dispose();
-                    }
-                    catch
-                    {
-                        // A failing annotation must not prevent the rest of teardown.
-                    }
-                }
-            }
-        }
-        finally
+        // Disposed after IsDisposed is set, so a late cross-thread post is already a no-op. Each item
+        // is guarded so one failure does not skip the rest.
+        if (_moduleDisposables != null)
         {
-            // Release this context's root even if an earlier teardown step threw, or the context root
-            // and shared instance-data block would leak (a retry no-ops because IsDisposed is already
-            // set). Clear the instance-data slot and free the rooting GCHandle.
-            if (ContextHandle != default)
+            foreach (IDisposable moduleDisposable in _moduleDisposables)
             {
-                Runtime.GetInstanceData(UncheckedEnvironmentHandle, out nint instanceData);
-                if (instanceData != default)
-                {
-                    unsafe
-                    {
-                        // Clear the slot only if it still holds this context; a newer context created
-                        // for the same env may have replaced it, and clearing then would unregister
-                        // the live context so FromEnv and its env finalizer could no longer reach it.
-                        if (((nint*)instanceData)[s_instanceDataSlot] == ContextHandle)
-                        {
-                            ((nint*)instanceData)[s_instanceDataSlot] = default;
-                        }
-                    }
-
-                    // Free this context's now-unregistered rooting handle. If the slot pointed here it
-                    // was cleared above, so no later FromEnv or finalizer can dereference the freed
-                    // handle; if a newer context replaced it, that context still owns the slot.
-                    GCHandle.FromIntPtr(ContextHandle).Free();
-                }
+                try { moduleDisposable.Dispose(); }
+                catch (Exception ex) { firstFailure ??= ExceptionDispatchInfo.Capture(ex); }
             }
         }
+
+        if (_disposableAnnotations != null)
+        {
+            foreach (IDisposable annotation in _disposableAnnotations.Values)
+            {
+                try { annotation.Dispose(); }
+                catch (Exception ex) { firstFailure ??= ExceptionDispatchInfo.Capture(ex); }
+            }
+        }
+
+        // Release this context's root so it can be collected, even if a phase above threw. The
+        // shared block is freed by FinalizeInstanceData once every context on the env is gone.
+        if (ContextHandle != default)
+        {
+            Runtime.GetInstanceData(UncheckedEnvironmentHandle, out nint instanceData);
+            if (instanceData != default)
+            {
+                unsafe
+                {
+                    // Clear the slot only if it still holds this context; a newer context for the
+                    // same env may have replaced it (clearing then would unregister the live one).
+                    if (((nint*)instanceData)[s_instanceDataSlot] == ContextHandle)
+                    {
+                        ((nint*)instanceData)[s_instanceDataSlot] = default;
+                    }
+                }
+
+                // Free this context's now-unregistered rooting handle. If the slot pointed here it
+                // was cleared above, so no later FromEnv or finalizer can dereference the freed
+                // handle; if a newer context replaced it, that context still owns the slot.
+                GCHandle.FromIntPtr(ContextHandle).Free();
+            }
+        }
+
+        // Surface the first teardown failure now that every phase has run and the root is released.
+        firstFailure?.Throw();
     }
 
     private static void DisposeReferences(

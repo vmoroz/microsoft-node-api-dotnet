@@ -698,29 +698,42 @@ public sealed class ManagedHost : JSEventEmitter, IDisposable
         if (_isDisposed) return;
         _isDisposed = true;
 
-        if (disposing)
+        try
         {
-            // The context disposes this host (a disposable annotation) at teardown, so the
-            // re-entrant context dispose here is a guarded no-op. Unsubscribe the process-wide
-            // resolve handlers so a torn-down environment's host is not left rooted by them.
-            _context?.Dispose();
-            _context = null;
-
-#if NETFRAMEWORK || NETSTANDARD
-            AppDomain.CurrentDomain.AssemblyResolve -= OnResolvingAssembly;
-#else
-            AssemblyLoadContext.Default.Resolving -= OnResolvingAssembly;
-            _loadContext.Resolving -= OnResolvingAssembly;
-
-            // A non-collectible load context cannot be unloaded; only unload one created collectible.
-            if (_loadContext.IsCollectible)
+            if (disposing)
             {
-                _loadContext.Unload();
-            }
-#endif
-        }
+                try
+                {
+                    // The context disposes this host (a disposable annotation) at teardown, so this
+                    // re-entrant dispose is a guarded no-op; on an explicit dispose it runs the
+                    // context teardown, which can throw.
+                    _context?.Dispose();
+                    _context = null;
+                }
+                finally
+                {
+                    // Unsubscribe the process-wide resolve handlers even if context disposal threw,
+                    // so a torn-down environment's host is not left rooted (a retry no-ops on
+                    // _isDisposed).
+#if NETFRAMEWORK || NETSTANDARD
+                    AppDomain.CurrentDomain.AssemblyResolve -= OnResolvingAssembly;
+#else
+                    AssemblyLoadContext.Default.Resolving -= OnResolvingAssembly;
+                    _loadContext.Resolving -= OnResolvingAssembly;
 
-        base.Dispose(disposing);
+                    // A non-collectible load context cannot be unloaded; only unload one created collectible.
+                    if (_loadContext.IsCollectible)
+                    {
+                        _loadContext.Unload();
+                    }
+#endif
+                }
+            }
+        }
+        finally
+        {
+            base.Dispose(disposing);
+        }
     }
 
 #if NETSTANDARD
