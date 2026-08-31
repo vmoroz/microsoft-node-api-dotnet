@@ -151,13 +151,26 @@ public sealed class JSValueScope : IDisposable
     /// Attempts to create a <see cref="JSValueScopeType.RuntimeContext" /> scope for a callback
     /// entering from JS, returning null when no live context can be resolved for the environment --
     /// for example a retained JS function invoked after its context was disposed. Callback adapters
-    /// use it to become a no-op in that case rather than let an exception cross the unmanaged
-    /// boundary. Genuine misuse (wrong thread or mismatched environment) still throws.
+    /// use it to become a no-op in that case. It never throws: an exception escaping an
+    /// <see cref="System.Runtime.InteropServices.UnmanagedCallersOnly" /> callback would cross the
+    /// native boundary and terminate the process.
     /// </summary>
     internal static JSValueScope? TryCreateRuntimeScope(napi_env env)
     {
-        JSRuntimeContext? context = CurrentOrNull?.RuntimeContext ?? JSRuntimeContext.FromEnv(env);
-        return context is { IsDisposed: false } ? new JSValueScope(env, context) : null;
+        try
+        {
+            // Inherit the current scope's context only when it belongs to this env; a synchronous
+            // callback for a different env must resolve that env's context, not the active one.
+            JSValueScope? current = CurrentOrNull;
+            JSRuntimeContext? context = current is null || current.UncheckedEnvironmentHandle != env
+                ? JSRuntimeContext.FromEnv(env)
+                : current.RuntimeContext;
+            return context is { IsDisposed: false } ? new JSValueScope(env, context) : null;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 
     /// <summary>
