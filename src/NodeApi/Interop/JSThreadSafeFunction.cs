@@ -211,12 +211,25 @@ public class JSThreadSafeFunction
     private static unsafe void FinalizeFunctionData(napi_env env, nint _, nint hint)
     {
         GCHandle functionDataHandle = GCHandle.FromIntPtr(hint);
-        if (functionDataHandle.Target is FunctionData functionData && functionData.Finalize is not null)
+        try
         {
-            functionData.Finalize(functionData.FunctionContext);
+            if (functionDataHandle.Target is FunctionData functionData &&
+                functionData.Finalize is not null)
+            {
+                functionData.Finalize(functionData.FunctionContext);
+            }
         }
-
-        functionDataHandle.Free();
+        catch (Exception)
+        {
+            // A finalizer must not throw across the native boundary; no JS error can be reported
+            // during teardown.
+        }
+        finally
+        {
+            // The handle was allocated on another thread, so free it directly rather than via the
+            // context's tracked FreeGCHandle.
+            functionDataHandle.Free();
+        }
     }
 
 #if UNMANAGED_DELEGATES

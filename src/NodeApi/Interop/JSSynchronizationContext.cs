@@ -315,12 +315,17 @@ internal sealed unsafe class JSTsfnSynchronizationContext : JSSynchronizationCon
     private static unsafe void Cleanup(nint data)
     {
         GCHandle cleanupHandle = GCHandle.FromIntPtr(data);
-        JSTsfnSynchronizationContext context =
-            (JSTsfnSynchronizationContext)cleanupHandle.Target!;
-        context._cleanupHandle = default;
         try
         {
+            JSTsfnSynchronizationContext context =
+                (JSTsfnSynchronizationContext)cleanupHandle.Target!;
+            context._cleanupHandle = default;
             context.Dispose();
+        }
+        catch (Exception)
+        {
+            // A cleanup hook must not throw across the native boundary; teardown continues
+            // regardless.
         }
         finally
         {

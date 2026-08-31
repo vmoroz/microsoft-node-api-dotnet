@@ -1003,6 +1003,16 @@ public sealed class JSRuntimeContext : IDisposable
     {
         if (IsDisposed) return;
 
+        // Disposal calls thread-affine napi (the sync context's RemoveEnvCleanupHook), so it must
+        // run on the thread that created the context -- where the instance-data finalizer and the
+        // JS dispose functions, the only expected callers, both run.
+        if (OwningThreadId != Environment.CurrentManagedThreadId)
+        {
+            throw new JSInvalidThreadAccessException(
+                currentScope: null,
+                "A runtime context may be disposed only on the thread that created it.");
+        }
+
         IsDisposed = true;
 
         // Run every teardown phase even if an earlier one throws, then release the context root and

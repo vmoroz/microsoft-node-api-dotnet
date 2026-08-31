@@ -1304,19 +1304,21 @@ public readonly struct JSValue : IJSValue<JSValue>
 #endif
     internal static unsafe void FinalizeGCHandle(napi_env env, nint data, nint hint)
     {
-        // Resolve the context from the env rather than a finalize hint, so the context's rooting
-        // GCHandle can be freed at teardown. A null/disposed context means teardown already ran;
-        // just free the wrapped object's handle.
         GCHandle handle = GCHandle.FromIntPtr(data);
-        JSRuntimeContext? context = JSRuntimeContext.FromEnv(env);
-        if (context != null && !context.IsDisposed)
+        JSRuntimeContext? context = null;
+        try
         {
-            context.FreeGCHandle(handle);
+            // Resolve the context from the env rather than a finalize hint, so the context's
+            // rooting GCHandle can be freed at teardown.
+            context = JSRuntimeContext.FromEnv(env);
         }
-        else
+        catch (Exception)
         {
-            handle.Free();
+            // A finalizer must not throw across the native boundary; a failed context lookup falls
+            // back to the best-effort untracked free below.
         }
+
+        FreeFinalizerGCHandle(handle, context);
     }
 
 #if UNMANAGED_DELEGATES
@@ -1327,14 +1329,18 @@ public readonly struct JSValue : IJSValue<JSValue>
         // The GC handle is passed via the hint parameter.
         // (The data parameter is the pointer to raw memory.)
         GCHandle handle = GCHandle.FromIntPtr(hint);
-        PinnedMemory pinnedMemory = (PinnedMemory)handle.Target!;
+        PinnedMemory? pinnedMemory = handle.Target as PinnedMemory;
         try
         {
-            pinnedMemory.Dispose();
+            pinnedMemory?.Dispose();
+        }
+        catch (Exception)
+        {
+            // A finalizer must not throw across the native boundary; teardown continues regardless.
         }
         finally
         {
-            pinnedMemory.RuntimeContext.FreeGCHandle(handle);
+            FreeFinalizerGCHandle(handle, pinnedMemory?.RuntimeContext);
         }
     }
 
@@ -1343,11 +1349,12 @@ public readonly struct JSValue : IJSValue<JSValue>
 #endif
     private static unsafe void CallFinalizeAction(napi_env env, nint data, nint hint)
     {
-        // Resolve the context from the env rather than a finalize hint (see FinalizeGCHandle).
         GCHandle gcHandle = GCHandle.FromIntPtr(data);
-        JSRuntimeContext? context = JSRuntimeContext.FromEnv(env);
+        JSRuntimeContext? context = null;
         try
         {
+            // Resolve the context from the env rather than a finalize hint (see FinalizeGCHandle).
+            context = JSRuntimeContext.FromEnv(env);
             if (context != null && !context.IsDisposed)
             {
                 // TODO: [vmoroz] In future we will be not allowed to run JS in finalizers.
@@ -1356,16 +1363,43 @@ public readonly struct JSValue : IJSValue<JSValue>
                 ((Action)gcHandle.Target!)();
             }
         }
+        catch (Exception)
+        {
+            // A finalizer must not throw across the native boundary and cannot report a JS error
+            // during teardown; a failed lookup, scope, or action is swallowed.
+        }
         finally
+        {
+            FreeFinalizerGCHandle(gcHandle, context);
+        }
+    }
+
+    // Frees a finalizer's GC handle exactly once without throwing across the native boundary. When
+    // the owning context is still usable the free is tracked; otherwise -- teardown already ran, or
+    // the tracked free itself failed before releasing the handle -- the handle is freed untracked.
+    private static void FreeFinalizerGCHandle(GCHandle handle, JSRuntimeContext? context)
+    {
+        try
         {
             if (context != null && !context.IsDisposed)
             {
-                context.FreeGCHandle(gcHandle);
+                context.FreeGCHandle(handle);
+                return;
             }
-            else
-            {
-                gcHandle.Free();
-            }
+        }
+        catch (Exception)
+        {
+            // The tracked free failed (e.g. a debug handle-map mismatch) before releasing the
+            // handle; fall back to an untracked free below.
+        }
+
+        try
+        {
+            handle.Free();
+        }
+        catch (Exception)
+        {
+            // The handle was already freed or is invalid; nothing more to do.
         }
     }
 

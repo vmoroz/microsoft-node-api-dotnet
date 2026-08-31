@@ -307,6 +307,25 @@ public class JSValueScopeTests
     }
 
     [Fact]
+    public void DisposeRuntimeContextFromDifferentThreadThrows()
+    {
+        napi_env env = new(Environment.CurrentManagedThreadId);
+        var context = new JSRuntimeContext(
+            env, _mockRuntime, new MockJSRuntime.SynchronizationContext());
+
+        // A runtime context may be disposed only on the thread that created it, because teardown
+        // calls thread-affine napi.
+        TestUtils.RunInThread(() =>
+        {
+            Assert.Throws<JSInvalidThreadAccessException>(() => context.Dispose());
+        }).Wait();
+
+        // The failed off-thread attempt left the context live, so disposing on the owning thread
+        // still succeeds.
+        context.Dispose();
+    }
+
+    [Fact]
     public void SynchronizationContextRejectsLazyCreateWhenContextNotCurrent()
     {
         napi_env env = new(Environment.CurrentManagedThreadId);
