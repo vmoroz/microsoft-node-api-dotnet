@@ -377,35 +377,22 @@ public class TracingJSRuntime : JSRuntime
         <napi_env, napi_callback_info, napi_value> s_traceSetterCallback = &TraceSetterCallback;
 #endif
 
-    // Like InvokeCallback (which these replace when tracing is on), the scope references the context
-    // inherited from the parent scope, or recovered from env instance data when there is none.
-    private static JSValueScope CreateCallbackScope(napi_env env)
-        => JSValueScope.CreateRuntimeScope(env);
-
-    // Guards the fallible scope creation like JSValue.InvokeCallback: a failure to resolve a context
-    // (for example a retained JS function invoked after teardown) is reported scope-lessly instead of
-    // escaping the UnmanagedCallersOnly callbacks below.
+    // Like JSValue.InvokeCallback (which these replace when tracing is on): a callback that can no
+    // longer resolve a context -- for example a retained JS function invoked after its context was
+    // disposed -- is a no-op instead of throwing across the UnmanagedCallersOnly callbacks below.
     private static napi_value InvokeTraceCallback<TDescriptor>(
         napi_env env,
         napi_callback_info cbinfo,
         Func<TDescriptor, JSCallbackDescriptor> getCallbackDescriptor)
     {
-        JSValueScope scope;
-        try
+        using JSValueScope? scope = JSValueScope.TryCreateRuntimeScope(env);
+        if (scope is null)
         {
-            scope = CreateCallbackScope(env);
-        }
-        catch (Exception ex)
-        {
-            new NodejsRuntime().ThrowError(env, code: null, ex.ToString());
             return napi_value.Null;
         }
 
-        using (scope)
-        {
-            return ((TracingJSRuntime)scope.Runtime).TraceCallback<TDescriptor>(
-                scope, cbinfo, getCallbackDescriptor);
-        }
+        return ((TracingJSRuntime)scope.Runtime).TraceCallback<TDescriptor>(
+            scope, cbinfo, getCallbackDescriptor);
     }
 
 #if UNMANAGED_DELEGATES

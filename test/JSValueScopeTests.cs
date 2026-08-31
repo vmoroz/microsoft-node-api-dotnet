@@ -18,11 +18,13 @@ public class JSValueScopeTests
 {
     private readonly MockJSRuntime _mockRuntime = new();
 
-    private JSValueScope TestRuntimeScope()
+    private JSValueScope TestRuntimeScope() => JSValueScopeTests.TestRuntimeScope(_mockRuntime);
+
+    private static JSValueScope TestRuntimeScope(MockJSRuntime runtime)
     {
         napi_env env = new(Environment.CurrentManagedThreadId);
         var context = new JSRuntimeContext(
-            env, _mockRuntime, new MockJSRuntime.SynchronizationContext());
+            env, runtime, new MockJSRuntime.SynchronizationContext());
         return JSValueScope.CreateRuntimeScope(env, context);
     }
 
@@ -266,7 +268,8 @@ public class JSValueScopeTests
         // Run in a new thread and establish another root scope there.
         TestUtils.RunInThread(() =>
         {
-            using JSValueScope rootScope2 = TestRuntimeScope();
+            // Separate runtime so rootScope2's env has its own instance data (one context per env).
+            using JSValueScope rootScope2 = JSValueScopeTests.TestRuntimeScope(new MockJSRuntime());
             Assert.Equal(JSValueScopeType.RuntimeContext, JSValueScope.Current.ScopeType);
             JSInvalidThreadAccessException ex = Assert.Throws<JSInvalidThreadAccessException>(
                 () => objectValue.IsObject());

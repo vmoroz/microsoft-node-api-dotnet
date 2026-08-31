@@ -148,6 +148,19 @@ public sealed class JSValueScope : IDisposable
         => new(env, context);
 
     /// <summary>
+    /// Attempts to create a <see cref="JSValueScopeType.RuntimeContext" /> scope for a callback
+    /// entering from JS, returning null when no live context can be resolved for the environment --
+    /// for example a retained JS function invoked after its context was disposed. Callback adapters
+    /// use it to become a no-op in that case rather than let an exception cross the unmanaged
+    /// boundary. Genuine misuse (wrong thread or mismatched environment) still throws.
+    /// </summary>
+    internal static JSValueScope? TryCreateRuntimeScope(napi_env env)
+    {
+        JSRuntimeContext? context = CurrentOrNull?.RuntimeContext ?? JSRuntimeContext.FromEnv(env);
+        return context is { IsDisposed: false } ? new JSValueScope(env, context) : null;
+    }
+
+    /// <summary>
     /// Creates a <see cref="JSValueScopeType.RuntimeContext" /> scope that starts a fresh module
     /// boundary: it references the same <see cref="JSRuntimeContext" /> (inherited or supplied) but
     /// begins a new module holder, so each loaded module resolves its own module instance via

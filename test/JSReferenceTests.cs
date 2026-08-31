@@ -23,6 +23,14 @@ public class JSReferenceTests
         return JSValueScope.CreateRuntimeScope(env, context);
     }
 
+    private static JSValueScope TestScope(MockJSRuntime runtime)
+    {
+        napi_env env = new(Environment.CurrentManagedThreadId);
+        var context = new JSRuntimeContext(
+            env, runtime, new MockJSRuntime.SynchronizationContext());
+        return JSValueScope.CreateRuntimeScope(env, context);
+    }
+
     [Fact]
     public void GetReferenceFromSameScope()
     {
@@ -74,7 +82,8 @@ public class JSReferenceTests
         // Run in a new thread and establish another root scope there.
         TestUtils.RunInThread(() =>
         {
-            using JSValueScope rootScope2 = TestScope();
+            // Separate runtime so rootScope2's env has its own instance data (one context per env).
+            using JSValueScope rootScope2 = JSReferenceTests.TestScope(new MockJSRuntime());
             Assert.Throws<JSInvalidThreadAccessException>(() => reference.GetValue());
         }).Wait();
     }
