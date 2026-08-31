@@ -129,6 +129,12 @@ public sealed class JSRuntimeContext : IDisposable
     private const int HostContextSlot = 1;
     private const int InstanceDataSlotCount = 2;
 
+    // Written into a slot when its context is disposed, so an env is associated with a runtime
+    // context exactly once: RegisterInstanceData rejects a non-empty slot (a live handle or this
+    // tombstone), and FromEnv/FinalizeInstanceData treat the tombstone as "no live context". A real
+    // GCHandle is never -1.
+    private static readonly nint s_disposedSlot = -1;
+
     // This runtime's slot in the instance-data block: the module slot by default, or the host slot
     // once the native host calls UseHostContextSlot() at startup.
     private static int s_instanceDataSlot = ModuleContextSlot;
@@ -198,7 +204,7 @@ public sealed class JSRuntimeContext : IDisposable
         }
 
         nint slotHandle = ((nint*)instanceData)[s_instanceDataSlot];
-        if (slotHandle == default)
+        if (slotHandle == default || slotHandle == s_disposedSlot)
         {
             return null;
         }
@@ -333,6 +339,14 @@ public sealed class JSRuntimeContext : IDisposable
                 status.ThrowIfFailed();
             }
         }
+        else if (((nint*)instanceData)[s_instanceDataSlot] != default)
+        {
+            // An env is associated with a runtime context exactly once. The slot holds a live
+            // context's handle, or a tombstone after one was disposed; either way a second
+            // association is rejected rather than silently replacing the first.
+            throw new InvalidOperationException(
+                "The environment is already associated with a runtime context.");
+        }
 
         ((nint*)instanceData)[s_instanceDataSlot] = ContextHandle;
     }
@@ -354,7 +368,7 @@ public sealed class JSRuntimeContext : IDisposable
         // runtime's slot is read, never the other runtime's (whose GCHandle belongs to a separate
         // GC heap).
         nint slotHandle = ((nint*)data)[s_instanceDataSlot];
-        if (slotHandle != default)
+        if (slotHandle != default && slotHandle != s_disposedSlot)
         {
             try
             {
@@ -366,13 +380,14 @@ public sealed class JSRuntimeContext : IDisposable
             }
         }
 
-        // Free the shared block once the last context on the env is gone (all slots cleared);
+        // Free the shared block once no slot holds a live context (each is empty or tombstoned);
         // disposing a host context cascades synchronously to the other slot. Do not null it out
         // via napi_set_instance_data: that deletes this very TrackedFinalizer, which Node then
         // deletes again (double free).
         for (int i = 0; i < InstanceDataSlotCount; i++)
         {
-            if (((nint*)data)[i] != default)
+            nint slot = ((nint*)data)[i];
+            if (slot != default && slot != s_disposedSlot)
             {
                 return;
             }
@@ -1043,17 +1058,17 @@ public sealed class JSRuntimeContext : IDisposable
             {
                 unsafe
                 {
-                    // Clear the slot only if it still holds this context; a newer context for the
-                    // same env may have replaced it (clearing then would unregister the live one).
+                    // Tombstone the slot (not empty) so the env can never re-associate a new context
+                    // (see RegisterInstanceData). The one-context invariant means the slot still
+                    // holds this context, but stay defensive.
                     if (((nint*)instanceData)[s_instanceDataSlot] == ContextHandle)
                     {
-                        ((nint*)instanceData)[s_instanceDataSlot] = default;
+                        ((nint*)instanceData)[s_instanceDataSlot] = s_disposedSlot;
                     }
                 }
 
-                // Free this context's now-unregistered rooting handle. If the slot pointed here it
-                // was cleared above, so no later FromEnv or finalizer can dereference the freed
-                // handle; if a newer context replaced it, that context still owns the slot.
+                // Free this context's now-unregistered rooting handle. The slot was tombstoned above,
+                // so no later FromEnv or finalizer can dereference the freed handle.
                 GCHandle.FromIntPtr(ContextHandle).Free();
             }
         }

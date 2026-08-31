@@ -382,57 +382,67 @@ public class TracingJSRuntime : JSRuntime
     private static JSValueScope CreateCallbackScope(napi_env env)
         => JSValueScope.CreateRuntimeScope(env);
 
+    // Guards the fallible scope creation like JSValue.InvokeCallback: a failure to resolve a context
+    // (for example a retained JS function invoked after teardown) is reported scope-lessly instead of
+    // escaping the UnmanagedCallersOnly callbacks below.
+    private static napi_value InvokeTraceCallback<TDescriptor>(
+        napi_env env,
+        napi_callback_info cbinfo,
+        Func<TDescriptor, JSCallbackDescriptor> getCallbackDescriptor)
+    {
+        JSValueScope scope;
+        try
+        {
+            scope = CreateCallbackScope(env);
+        }
+        catch (Exception ex)
+        {
+            new NodejsRuntime().ThrowError(env, code: null, ex.ToString());
+            return napi_value.Null;
+        }
+
+        using (scope)
+        {
+            return ((TracingJSRuntime)scope.Runtime).TraceCallback<TDescriptor>(
+                scope, cbinfo, getCallbackDescriptor);
+        }
+    }
+
 #if UNMANAGED_DELEGATES
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
 #endif
     private static unsafe napi_value TraceFunctionCallback(napi_env env, napi_callback_info cbinfo)
-    {
-        using JSValueScope scope = CreateCallbackScope(env);
-        return ((TracingJSRuntime)scope.Runtime).TraceCallback<JSCallbackDescriptor>(
-            scope, cbinfo, (descriptor) => descriptor);
-    }
+        => InvokeTraceCallback<JSCallbackDescriptor>(env, cbinfo, (descriptor) => descriptor);
 
 #if UNMANAGED_DELEGATES
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
 #endif
     private static unsafe napi_value TraceMethodCallback(napi_env env, napi_callback_info cbinfo)
-    {
-        using JSValueScope scope = CreateCallbackScope(env);
-        return ((TracingJSRuntime)scope.Runtime).TraceCallback<JSPropertyDescriptor>(
-            scope, cbinfo, (propertyDescriptor) => new(
-                propertyDescriptor.Name,
-                propertyDescriptor.Method!,
-                propertyDescriptor.Data,
-                propertyDescriptor.ModuleHolder));
-    }
+        => InvokeTraceCallback<JSPropertyDescriptor>(env, cbinfo, (propertyDescriptor) => new(
+            propertyDescriptor.Name,
+            propertyDescriptor.Method!,
+            propertyDescriptor.Data,
+            propertyDescriptor.ModuleHolder));
 
 #if UNMANAGED_DELEGATES
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
 #endif
     private static unsafe napi_value TraceGetterCallback(napi_env env, napi_callback_info cbinfo)
-    {
-        using JSValueScope scope = CreateCallbackScope(env);
-        return ((TracingJSRuntime)scope.Runtime).TraceCallback<JSPropertyDescriptor>(
-            scope, cbinfo, (propertyDescriptor) => new(
-                propertyDescriptor.Name,
-                propertyDescriptor.Getter!,
-                propertyDescriptor.Data,
-                propertyDescriptor.ModuleHolder));
-    }
+        => InvokeTraceCallback<JSPropertyDescriptor>(env, cbinfo, (propertyDescriptor) => new(
+            propertyDescriptor.Name,
+            propertyDescriptor.Getter!,
+            propertyDescriptor.Data,
+            propertyDescriptor.ModuleHolder));
 
 #if UNMANAGED_DELEGATES
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
 #endif
     private static unsafe napi_value TraceSetterCallback(napi_env env, napi_callback_info cbinfo)
-    {
-        using JSValueScope scope = CreateCallbackScope(env);
-        return ((TracingJSRuntime)scope.Runtime).TraceCallback<JSPropertyDescriptor>(
-            scope, cbinfo, (propertyDescriptor) => new(
-                propertyDescriptor.Name,
-                propertyDescriptor.Setter!,
-                propertyDescriptor.Data,
-                propertyDescriptor.ModuleHolder));
-    }
+        => InvokeTraceCallback<JSPropertyDescriptor>(env, cbinfo, (propertyDescriptor) => new(
+            propertyDescriptor.Name,
+            propertyDescriptor.Setter!,
+            propertyDescriptor.Data,
+            propertyDescriptor.ModuleHolder));
 
     /// <summary>
     /// Traces a callback function, method, getter, or setter, including args and return value.

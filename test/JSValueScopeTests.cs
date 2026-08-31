@@ -307,9 +307,12 @@ public class JSValueScopeTests
     public void SynchronizationContextRejectsLazyCreateWhenContextNotCurrent()
     {
         napi_env env = new(Environment.CurrentManagedThreadId);
-        var contextA = new JSRuntimeContext(env, _mockRuntime); // no sync context -> lazy
+
+        // Separate runtimes so each context has its own instance data (an env is associated with a
+        // single context), letting contextB be current while contextA is not.
+        var contextA = new JSRuntimeContext(env, new MockJSRuntime()); // no sync context -> lazy
         var contextB = new JSRuntimeContext(
-            env, _mockRuntime, new MockJSRuntime.SynchronizationContext());
+            env, new MockJSRuntime(), new MockJSRuntime.SynchronizationContext());
 
         using (JSValueScope.CreateRuntimeScope(env, contextB))
         {
@@ -351,21 +354,21 @@ public class JSValueScopeTests
     }
 
     [Fact]
-    public void DisposingReplacedContextKeepsNewerContextRegistered()
+    public void RegisteringSecondContextOnEnvIsRejected()
     {
         napi_env env = new(Environment.CurrentManagedThreadId);
-        var contextA = new JSRuntimeContext(
-            env, _mockRuntime, new MockJSRuntime.SynchronizationContext());
-        var contextB = new JSRuntimeContext(
+        var context = new JSRuntimeContext(
             env, _mockRuntime, new MockJSRuntime.SynchronizationContext());
 
-        // contextB replaced contextA in the env instance-data slot; disposing the older contextA
-        // must not clear contextB's registration.
-        contextA.Dispose();
-        Assert.Same(contextB, JSRuntimeContext.FromEnv(env));
+        // An env is associated with a runtime context exactly once.
+        Assert.Throws<InvalidOperationException>(
+            () => new JSRuntimeContext(env, _mockRuntime, new MockJSRuntime.SynchronizationContext()));
 
-        contextB.Dispose();
-        Assert.Null(JSRuntimeContext.FromEnv(env));
+        context.Dispose();
+
+        // Even after disposal the env cannot be re-associated (the slot is tombstoned).
+        Assert.Throws<InvalidOperationException>(
+            () => new JSRuntimeContext(env, _mockRuntime, new MockJSRuntime.SynchronizationContext()));
     }
 
     [Fact]

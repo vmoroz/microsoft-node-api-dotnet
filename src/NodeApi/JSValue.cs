@@ -1260,9 +1260,21 @@ public readonly struct JSValue : IJSValue<JSValue>
         napi_callback_info callbackInfo,
         Func<TDescriptor, JSCallbackDescriptor> getCallbackDescriptor)
     {
-        // The scope references the context inherited from the parent scope, or -- when the native
-        // host dispatches a callback with no scope on the thread -- recovered from env instance data.
-        using var scope = JSValueScope.CreateRuntimeScope(env);
+        JSValueScope scope;
+        try
+        {
+            // The scope references the context inherited from the parent scope, or -- when the native
+            // host dispatches a callback with no scope on the thread -- recovered from env instance data.
+            scope = JSValueScope.CreateRuntimeScope(env);
+        }
+        catch (Exception ex)
+        {
+            // Scope-less throw: no context resolved (e.g. a retained JS function invoked after its
+            // context was disposed), so there is no scope in which to build a JSError.
+            new NodejsRuntime().ThrowError(env, code: null, ex.ToString());
+            return napi_value.Null;
+        }
+
         try
         {
             JSCallbackArgs.GetDataAndLength(scope, callbackInfo, out object? data, out int length);
@@ -1276,6 +1288,10 @@ public readonly struct JSValue : IJSValue<JSValue>
         {
             JSError.ThrowError(ex);
             return napi_value.Null;
+        }
+        finally
+        {
+            scope.Dispose();
         }
     }
 
