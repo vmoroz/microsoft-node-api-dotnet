@@ -385,14 +385,26 @@ public class TracingJSRuntime : JSRuntime
         napi_callback_info cbinfo,
         Func<TDescriptor, JSCallbackDescriptor> getCallbackDescriptor)
     {
-        using JSValueScope? scope = JSValueScope.TryCreateRuntimeScope(env);
+        JSValueScope? scope = JSValueScope.TryCreateRuntimeScope(env);
         if (scope is null)
         {
             return napi_value.Null;
         }
 
-        return ((TracingJSRuntime)scope.Runtime).TraceCallback<TDescriptor>(
-            scope, cbinfo, getCallbackDescriptor);
+        // TraceCallback reports callback errors as JS exceptions itself; the outer try only keeps a
+        // scope-disposal exception from escaping the UnmanagedCallersOnly boundary.
+        try
+        {
+            using (scope)
+            {
+                return ((TracingJSRuntime)scope.Runtime).TraceCallback<TDescriptor>(
+                    scope, cbinfo, getCallbackDescriptor);
+            }
+        }
+        catch (Exception)
+        {
+            return napi_value.Null;
+        }
     }
 
 #if UNMANAGED_DELEGATES

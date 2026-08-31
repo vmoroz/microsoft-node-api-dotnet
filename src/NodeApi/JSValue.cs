@@ -1264,24 +1264,37 @@ public readonly struct JSValue : IJSValue<JSValue>
         // host dispatches a callback with no scope on the thread -- recovered from env instance data.
         // A retained JS function invoked after its context was disposed resolves none, so the call
         // is a no-op instead of throwing across the unmanaged boundary.
-        using JSValueScope? scope = JSValueScope.TryCreateRuntimeScope(env);
+        JSValueScope? scope = JSValueScope.TryCreateRuntimeScope(env);
         if (scope is null)
         {
             return napi_value.Null;
         }
 
+        // The inner catch reports a callback error as a JS exception while the scope is still
+        // current; the outer catch keeps the scope's disposal -- which validates LIFO order and can
+        // throw when callback code left a nested scope open -- from escaping the unmanaged boundary.
         try
         {
-            JSCallbackArgs.GetDataAndLength(scope, callbackInfo, out object? data, out int length);
-            Span<napi_value> args = stackalloc napi_value[length];
-            JSCallbackDescriptor descriptor = getCallbackDescriptor((TDescriptor)data!);
-            scope.ModuleHolder = descriptor.ModuleHolder;
-            return (napi_value)descriptor.Callback(
-                new JSCallbackArgs(scope, callbackInfo, args, descriptor.Data));
+            using (scope)
+            {
+                try
+                {
+                    JSCallbackArgs.GetDataAndLength(scope, callbackInfo, out object? data, out int length);
+                    Span<napi_value> args = stackalloc napi_value[length];
+                    JSCallbackDescriptor descriptor = getCallbackDescriptor((TDescriptor)data!);
+                    scope.ModuleHolder = descriptor.ModuleHolder;
+                    return (napi_value)descriptor.Callback(
+                        new JSCallbackArgs(scope, callbackInfo, args, descriptor.Data));
+                }
+                catch (Exception ex)
+                {
+                    JSError.ThrowError(ex);
+                    return napi_value.Null;
+                }
+            }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            JSError.ThrowError(ex);
             return napi_value.Null;
         }
     }

@@ -305,7 +305,9 @@ public class JSReference : IDisposable
 
     private void ThrowIfDisposed()
     {
-        if (IsDisposed)
+        // Once the owning context is disposed its env was torn down and the napi_ref is invalid, so
+        // every access must fail -- not only after the reference itself was explicitly disposed.
+        if (IsDisposed || _context.IsDisposed)
         {
             throw new ObjectDisposedException(nameof(JSReference));
         }
