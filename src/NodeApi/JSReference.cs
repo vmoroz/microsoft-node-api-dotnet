@@ -352,9 +352,10 @@ public class JSReference : IDisposable
             return;
         }
 
-        // Once the context is disposed its napi_env was torn down and Node already reclaimed every
-        // napi_ref, so there is nothing to delete and touching the env would be unsafe. This single
-        // flag invalidates all references at once, for both the explicit and finalizer paths.
+        // A disposed context never deletes its napi_refs, and this one flag invalidates every
+        // reference at once. At env teardown Node runs finalizers in no defined order, so a napi_ref
+        // may already be finalized and freed -- deleting it again would crash; on an explicit
+        // dispose() the env is still alive and the few undeleted refs are reclaimed at env teardown.
         if (_context.IsDisposed)
         {
             IsDisposed = true;
