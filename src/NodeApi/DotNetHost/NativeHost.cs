@@ -500,11 +500,17 @@ internal unsafe partial class NativeHost : IDisposable
         exports.SetProperty("require", require);
         exports.SetProperty("import", import);
 
-        // The dispose method runs the full idempotent host disposal -- notifying the managed host
-        // before closing the runtime-host channel -- so on .NET Framework (which notifies managed
-        // code only through that channel) the managed registration is released, not stranded.
+        // Defer disposing the host context until this callback (and any value scope it is nested in)
+        // has closed: dispose() is a native call dispatched through Node-API, so disposing the context
+        // while a scope is open would leave that scope to close its napi handle scope on a disposed
+        // context as it unwinds. Disposing the host context runs the full host teardown via its
+        // disposable annotation -- notifying the managed host and closing the runtime-host channel.
         exports.DefineProperties(new JSPropertyDescriptor(
-            "dispose", (_) => { Dispose(); return default; }));
+            "dispose", (_) =>
+            {
+                JSValueScope.DisposeRuntimeContextWhenIdle(JSValueScope.Current.RuntimeContext);
+                return default;
+            }));
 
         // Invoke the managed host initialize method. It defines properties on the exports object
         // and fills in the registration so the native host can keep the managed host alive and
@@ -552,7 +558,8 @@ internal unsafe partial class NativeHost : IDisposable
 
     public void Dispose()
     {
-        // Called at env teardown (disposable annotation on the host context) and by the JS dispose() hook.
+        // Runs as the host context's disposable annotation when that context is disposed: at env
+        // teardown by its instance-data finalizer, or (deferred to scope close) by the JS dispose() hook.
         try
         {
             NotifyManagedHostEnvironmentFinalize();
@@ -568,8 +575,9 @@ internal unsafe partial class NativeHost : IDisposable
 
         CloseRuntimeHost();
 
-        // JSReference.Dispose no-ops once its context is disposed, so this frees the napi_ref only on
-        // an explicit dispose() (env alive), never during env-teardown finalization.
+        // Both dispose paths now run while the host context is disposed, so JSReference.Dispose
+        // short-circuits and Node reclaims the napi_ref at env teardown; the assignment drops the
+        // managed reference so it can be collected.
         _exports?.Dispose();
         _exports = null;
     }

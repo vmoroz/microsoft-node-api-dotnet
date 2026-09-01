@@ -53,6 +53,7 @@ public sealed class JSValueScope : IDisposable
 #pragma warning restore IDE0032
     private readonly SynchronizationContext? _previousSyncContext;
     private readonly nint _scopeHandle;
+    private bool _disposeRuntimeContextOnClose;
 
     internal JSValueScopeType ScopeType { get; }
 
@@ -314,6 +315,27 @@ public sealed class JSValueScope : IDisposable
         }
     }
 
+    /// <summary>
+    /// Disposes <paramref name="runtimeContext"/> once every value scope open on the current thread
+    /// has closed, or immediately if none is open. A dispose request can arrive through a native
+    /// callback nested inside open value scopes (JS calling native calling JS…); disposing the
+    /// context then would leave those scopes to close their napi handle scopes on a disposed context
+    /// as they unwind, an unbalanced close that Node-API rejects. The innermost open scope is flagged
+    /// and the request moves outward as scopes close (LIFO), so the outermost scope disposes the
+    /// context once none remain open.
+    /// </summary>
+    internal static void DisposeRuntimeContextWhenIdle(JSRuntimeContext runtimeContext)
+    {
+        if (CurrentOrNull is { } scope)
+        {
+            scope._disposeRuntimeContextOnClose = true;
+        }
+        else
+        {
+            runtimeContext.Dispose();
+        }
+    }
+
     public void Dispose()
     {
         if (IsDisposed) return;
@@ -356,6 +378,21 @@ public sealed class JSValueScope : IDisposable
         }
 
         CurrentOrNull = _parentScope;
+
+        // Carry a deferred context-disposal request (see DisposeRuntimeContextWhenIdle) out to the
+        // parent, or -- at the outermost scope, where no scope remains open on the context -- dispose
+        // the context now that it has no open scopes.
+        if (_disposeRuntimeContextOnClose)
+        {
+            if (_parentScope is null)
+            {
+                RuntimeContext.Dispose();
+            }
+            else
+            {
+                _parentScope._disposeRuntimeContextOnClose = true;
+            }
+        }
     }
 
     public JSValue Escape(JSValue value)

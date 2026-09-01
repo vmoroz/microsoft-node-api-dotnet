@@ -338,7 +338,13 @@ public sealed class ManagedHost : JSEventEmitter, IDisposable
     {
         JSRuntimeContext? context = _context;
         _context = null;
-        context?.Dispose();
+        if (context is not null)
+        {
+            // Defer disposal until any open value scope closes -- the notification can arrive while a
+            // managed callback scope is on the stack (managed calling JS calling dispose) -- mirroring
+            // the native host's dispose() hook. With no scope open it disposes immediately.
+            JSValueScope.DisposeRuntimeContextWhenIdle(context);
+        }
     }
 
     /// <summary>

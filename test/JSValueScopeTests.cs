@@ -376,6 +376,43 @@ public class JSValueScopeTests
     }
 
     [Fact]
+    public void DisposeRuntimeContextWhenIdleDefersUntilOutermostScopeCloses()
+    {
+        napi_env env = new(Environment.CurrentManagedThreadId);
+        var context = new JSRuntimeContext(
+            env, _mockRuntime, new MockJSRuntime.SynchronizationContext());
+
+        using (JSValueScope outerScope = JSValueScope.CreateRuntimeScope(env, context))
+        {
+            using (JSValueScope handleScope = JSValueScope.CreateHandleScope())
+            {
+                // A disposal request while scopes are open must be deferred: disposing now would
+                // leave the handle scope to close on a disposed context as it unwinds.
+                JSValueScope.DisposeRuntimeContextWhenIdle(context);
+                Assert.False(context.IsDisposed);
+            }
+
+            // The inner scope closed, but the outer scope keeps the context alive.
+            Assert.False(context.IsDisposed);
+        }
+
+        // The outermost scope closed, so the context is disposed once no scope remains open.
+        Assert.True(context.IsDisposed);
+    }
+
+    [Fact]
+    public void DisposeRuntimeContextWhenIdleDisposesImmediatelyWithNoScope()
+    {
+        napi_env env = new(Environment.CurrentManagedThreadId);
+        var context = new JSRuntimeContext(
+            env, _mockRuntime, new MockJSRuntime.SynchronizationContext());
+
+        // With no value scope open, the request is applied immediately.
+        JSValueScope.DisposeRuntimeContextWhenIdle(context);
+        Assert.True(context.IsDisposed);
+    }
+
+    [Fact]
     public void RegisteringSecondContextOnEnvIsRejected()
     {
         napi_env env = new(Environment.CurrentManagedThreadId);
