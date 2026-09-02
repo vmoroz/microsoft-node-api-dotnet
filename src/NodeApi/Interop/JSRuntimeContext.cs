@@ -139,9 +139,10 @@ public sealed class JSRuntimeContext : IDisposable
     // once the native host calls UseHostContextSlot() at startup.
     private static int s_instanceDataSlot = ModuleContextSlot;
 
-    // The runtime used to read env instance data in FromEnv, captured when a context registers. A
-    // JSRuntime is a stateless dispatch v-table, so any registered runtime can read any env's
-    // instance data; the process-wide static is intentional and safe.
+    // Runtime v-table used by FromEnv to read env-keyed instance data. NodejsRuntime is stateless,
+    // and wrappers such as TracingJSRuntime delegate instance-data access to it, so any registered
+    // production runtime can read every env. The env check in FromEnv makes an instance-backed
+    // custom runtime fail closed if this field is stale.
     private static JSRuntime? s_instanceDataRuntime;
 
     internal napi_env EnvironmentHandle
@@ -209,9 +210,9 @@ public sealed class JSRuntimeContext : IDisposable
             return null;
         }
 
-        // Resolve the context only if it actually belongs to this env. The runtime that reads the
-        // instance data is a process-wide static, so a stale or foreign registration could point at
-        // another env's block; a context whose env does not match must not be returned.
+        // The production runtime lookup is env-keyed, but an instance-backed custom runtime could
+        // return another env's block when the process-wide runtime is stale. Fail closed unless the
+        // resolved context owns the requested env.
         JSRuntimeContext? context = GCHandle.FromIntPtr(slotHandle).Target as JSRuntimeContext;
         return context is not null && context.UncheckedEnvironmentHandle == env ? context : null;
     }
