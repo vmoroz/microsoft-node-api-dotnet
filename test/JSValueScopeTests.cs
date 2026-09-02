@@ -442,6 +442,44 @@ public class JSValueScopeTests
     }
 
     [Fact]
+    public void DisposeRuntimeContextWhenIdleDefersPastAlternatingNesting()
+    {
+        napi_env env = new(Environment.CurrentManagedThreadId);
+
+        // Separate runtimes so each context owns its own instance data, allowing alternating A -> B -> A
+        // scope nesting (reentrant cross-environment callbacks) on one thread.
+        var contextA = new JSRuntimeContext(
+            env, new MockJSRuntime(), new MockJSRuntime.SynchronizationContext());
+        var contextB = new JSRuntimeContext(
+            env, new MockJSRuntime(), new MockJSRuntime.SynchronizationContext());
+
+        using (JSValueScope.CreateRuntimeScope(env, contextA))
+        {
+            using (JSValueScope.CreateRuntimeScope(env, contextB))
+            {
+                using (JSValueScope.CreateRuntimeScope(env, contextA))
+                {
+                    // Requesting A while the inner A scope is current must not dispose A when that
+                    // scope closes: the outer A scope, below B on the stack, is still open.
+                    JSValueScope.DisposeRuntimeContextWhenIdle(contextA);
+                    Assert.False(contextA.IsDisposed);
+                }
+
+                // The inner A scope closed, but the outer A scope keeps A alive.
+                Assert.False(contextA.IsDisposed);
+            }
+
+            // B closed; the outer A scope still keeps A alive.
+            Assert.False(contextA.IsDisposed);
+        }
+
+        // The outermost A scope closed, so A is disposed.
+        Assert.True(contextA.IsDisposed);
+
+        contextB.Dispose();
+    }
+
+    [Fact]
     public void RegisteringSecondContextOnEnvIsRejected()
     {
         napi_env env = new(Environment.CurrentManagedThreadId);

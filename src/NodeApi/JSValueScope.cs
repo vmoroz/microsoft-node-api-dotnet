@@ -379,19 +379,26 @@ public sealed class JSValueScope : IDisposable
 
         CurrentOrNull = _parentScope;
 
-        // Carry a deferred context-disposal request out to the parent, or dispose the target once this
-        // is its outermost open scope (parent is null or a different context). Tracking the target
-        // context -- not a flag -- avoids disposing a foreign context nested below on the stack, which
-        // TryCreateRuntimeScope allows, in the requested context's place.
+        // Dispose a deferred context-disposal request's target once this scope closes, but only when
+        // no ancestor still belongs to that context -- alternating nesting (A -> B -> A, which
+        // TryCreateRuntimeScope allows across environments) can leave an outer scope of the target
+        // below intervening scopes for other contexts. Otherwise carry the request to the nearest
+        // ancestor of the target context, so it is disposed only when its own outermost scope closes.
         if (_runtimeContextToDisposeOnClose is { } runtimeContext)
         {
-            if (_parentScope is null || _parentScope.RuntimeContext != runtimeContext)
+            JSValueScope? ancestor = _parentScope;
+            while (ancestor is not null && ancestor.RuntimeContext != runtimeContext)
+            {
+                ancestor = ancestor._parentScope;
+            }
+
+            if (ancestor is null)
             {
                 runtimeContext.Dispose();
             }
             else
             {
-                _parentScope._runtimeContextToDisposeOnClose = runtimeContext;
+                ancestor._runtimeContextToDisposeOnClose = runtimeContext;
             }
         }
     }
