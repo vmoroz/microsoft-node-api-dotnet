@@ -254,6 +254,7 @@ internal sealed unsafe class JSTsfnSynchronizationContext : JSSynchronizationCon
     private readonly JSRuntime _runtime;
     private readonly napi_env _env;
     private readonly JSThreadSafeFunction _tsfn;
+    private readonly TsfnCallGate _callGate = new();
     private GCHandle _cleanupHandle;
 
     public JSTsfnSynchronizationContext()
@@ -297,6 +298,9 @@ internal sealed unsafe class JSTsfnSynchronizationContext : JSSynchronizationCon
         }
 
         base.Dispose();
+
+        // Wait for admitted native calls before releasing the TSFN.
+        _callGate.Close();
 
         // Destroy TSFN by releasing last thread use count.
         // TSFN is deleted after this point and must not be used.
@@ -353,7 +357,8 @@ internal sealed unsafe class JSTsfnSynchronizationContext : JSSynchronizationCon
 
     public override void Post(SendOrPostCallback callback, object? state)
     {
-        if (IsDisposed) return;
+        using TsfnCallGate.Guard? guard = _callGate.TryEnter();
+        if (guard is null) return;
 
         _tsfn.NonBlockingCall(() => callback(state));
     }
@@ -366,14 +371,19 @@ internal sealed unsafe class JSTsfnSynchronizationContext : JSSynchronizationCon
             return;
         }
 
-        if (IsDisposed) return;
-
         using ManualResetEvent syncEvent = new(false);
-        _tsfn.NonBlockingCall(() =>
         {
-            callback(state);
-            syncEvent.Set();
-        });
+            using TsfnCallGate.Guard? guard = _callGate.TryEnter();
+            if (guard is null) return;
+
+            _tsfn.NonBlockingCall(() =>
+            {
+                callback(state);
+                syncEvent.Set();
+            });
+        }
+
+        // Do not hold the gate while waiting for a callback on the JS thread.
         syncEvent.WaitOne();
     }
 }
