@@ -413,12 +413,11 @@ public class JSValueScopeTests
     }
 
     [Fact]
-    public void DisposeRuntimeContextWhenIdleDisposesRequestedContextUnderForeignNesting()
+    public void NestedRuntimeScopeWithDifferentContextThrows()
     {
         napi_env env = new(Environment.CurrentManagedThreadId);
 
-        // Separate runtimes so each context owns its own instance data, letting a scope for one be
-        // nested under a scope for the other (as TryCreateRuntimeScope allows across environments).
+        // Separate runtimes so each context owns its own instance data.
         var contextA = new JSRuntimeContext(
             env, new MockJSRuntime(), new MockJSRuntime.SynchronizationContext());
         var contextB = new JSRuntimeContext(
@@ -426,56 +425,13 @@ public class JSValueScopeTests
 
         using (JSValueScope.CreateRuntimeScope(env, contextA))
         {
-            using (JSValueScope.CreateRuntimeScope(env, contextB))
-            {
-                // A scope for B is nested under a scope for A. The request must dispose B when B's
-                // scope closes, not propagate into A's scope and dispose A in its place.
-                JSValueScope.DisposeRuntimeContextWhenIdle(contextB);
-                Assert.False(contextB.IsDisposed);
-            }
-
-            Assert.True(contextB.IsDisposed);
-            Assert.False(contextA.IsDisposed);
+            // Every scope on a thread's stack shares one runtime context, so nesting a scope for a
+            // different context is rejected.
+            Assert.Throws<InvalidOperationException>(
+                () => JSValueScope.CreateRuntimeScope(env, contextB));
         }
 
         contextA.Dispose();
-    }
-
-    [Fact]
-    public void DisposeRuntimeContextWhenIdleDefersPastAlternatingNesting()
-    {
-        napi_env env = new(Environment.CurrentManagedThreadId);
-
-        // Separate runtimes so each context owns its own instance data, allowing alternating A -> B -> A
-        // scope nesting (reentrant cross-environment callbacks) on one thread.
-        var contextA = new JSRuntimeContext(
-            env, new MockJSRuntime(), new MockJSRuntime.SynchronizationContext());
-        var contextB = new JSRuntimeContext(
-            env, new MockJSRuntime(), new MockJSRuntime.SynchronizationContext());
-
-        using (JSValueScope.CreateRuntimeScope(env, contextA))
-        {
-            using (JSValueScope.CreateRuntimeScope(env, contextB))
-            {
-                using (JSValueScope.CreateRuntimeScope(env, contextA))
-                {
-                    // Requesting A while the inner A scope is current must not dispose A when that
-                    // scope closes: the outer A scope, below B on the stack, is still open.
-                    JSValueScope.DisposeRuntimeContextWhenIdle(contextA);
-                    Assert.False(contextA.IsDisposed);
-                }
-
-                // The inner A scope closed, but the outer A scope keeps A alive.
-                Assert.False(contextA.IsDisposed);
-            }
-
-            // B closed; the outer A scope still keeps A alive.
-            Assert.False(contextA.IsDisposed);
-        }
-
-        // The outermost A scope closed, so A is disposed.
-        Assert.True(contextA.IsDisposed);
-
         contextB.Dispose();
     }
 

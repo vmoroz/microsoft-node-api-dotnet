@@ -53,7 +53,7 @@ public sealed class JSValueScope : IDisposable
 #pragma warning restore IDE0032
     private readonly SynchronizationContext? _previousSyncContext;
     private readonly nint _scopeHandle;
-    private JSRuntimeContext? _runtimeContextToDisposeOnClose;
+    private bool _disposeRuntimeContextOnClose;
 
     internal JSValueScopeType ScopeType { get; }
 
@@ -160,12 +160,9 @@ public sealed class JSValueScope : IDisposable
     {
         try
         {
-            // Inherit the current scope's context only when it belongs to this env; a synchronous
-            // callback for a different env must resolve that env's context, not the active one.
-            JSValueScope? current = CurrentOrNull;
-            JSRuntimeContext? context = current is null || current.UncheckedEnvironmentHandle != env
-                ? JSRuntimeContext.FromEnv(env)
-                : current.RuntimeContext;
+            // Inherit the current scope's context -- every scope on a thread shares one context per
+            // environment -- or recover it from env instance data when no scope is open yet.
+            JSRuntimeContext? context = CurrentOrNull?.RuntimeContext ?? JSRuntimeContext.FromEnv(env);
             return context is { IsDisposed: false } ? new JSValueScope(env, context) : null;
         }
         catch (Exception)
@@ -214,6 +211,15 @@ public sealed class JSValueScope : IDisposable
             ?? JSRuntimeContext.FromEnv(env)
             ?? throw new InvalidOperationException(
                 "A runtime context could not be resolved for the scope.");
+
+        // Every scope on a thread's stack shares one runtime context (one per environment per loaded
+        // module -- separate modules have separate thread-static scope stacks), so a nested scope must
+        // continue its parent's context. A mismatch is a caller error, not something to reconcile.
+        if (_parentScope is not null && context != _parentScope.RuntimeContext)
+        {
+            throw new InvalidOperationException(
+                "A nested value scope must use the same runtime context as its parent scope.");
+        }
 
         // A disposed context's environment is torn down; entering it would call Node-API on a
         // dead env, which the scope's own unchecked handle would not catch.
@@ -320,15 +326,14 @@ public sealed class JSValueScope : IDisposable
     /// immediately if none is open. A dispose request can arrive through a native callback nested
     /// inside open value scopes (JS calling native calling JS…); disposing the context then would
     /// leave those scopes to close their napi handle scopes on a disposed context as they unwind, an
-    /// unbalanced close that Node-API rejects. The request records the target context on the innermost
-    /// open scope and moves outward as scopes close (LIFO); the outermost scope that belongs to the
-    /// target context disposes it, so a foreign context nested below on the stack is left untouched.
+    /// unbalanced close that Node-API rejects. Every scope on the stack shares this one context, so
+    /// the innermost open scope is flagged and the outermost disposes the context as it closes.
     /// </summary>
     internal static void DisposeRuntimeContextWhenIdle(JSRuntimeContext runtimeContext)
     {
         if (CurrentOrNull is { } scope)
         {
-            scope._runtimeContextToDisposeOnClose = runtimeContext;
+            scope._disposeRuntimeContextOnClose = true;
         }
         else
         {
@@ -379,26 +384,18 @@ public sealed class JSValueScope : IDisposable
 
         CurrentOrNull = _parentScope;
 
-        // Dispose a deferred context-disposal request's target once this scope closes, but only when
-        // no ancestor still belongs to that context -- alternating nesting (A -> B -> A, which
-        // TryCreateRuntimeScope allows across environments) can leave an outer scope of the target
-        // below intervening scopes for other contexts. Otherwise carry the request to the nearest
-        // ancestor of the target context, so it is disposed only when its own outermost scope closes.
-        if (_runtimeContextToDisposeOnClose is { } runtimeContext)
+        // Carry a deferred context-disposal request (see DisposeRuntimeContextWhenIdle) out to the
+        // parent, or -- at the outermost scope, where none of the context's scopes remain open --
+        // dispose the context now.
+        if (_disposeRuntimeContextOnClose)
         {
-            JSValueScope? ancestor = _parentScope;
-            while (ancestor is not null && ancestor.RuntimeContext != runtimeContext)
+            if (_parentScope is null)
             {
-                ancestor = ancestor._parentScope;
-            }
-
-            if (ancestor is null)
-            {
-                runtimeContext.Dispose();
+                RuntimeContext.Dispose();
             }
             else
             {
-                ancestor._runtimeContextToDisposeOnClose = runtimeContext;
+                _parentScope._disposeRuntimeContextOnClose = true;
             }
         }
     }

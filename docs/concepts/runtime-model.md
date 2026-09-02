@@ -103,6 +103,15 @@ the surrounding context, so each loaded module resolves its own module instance 
 modules: without a fresh holder per module, the most recently loaded module's instance would be the
 one every module's callbacks resolve.
 
+Scopes nest on a **thread-static stack, and every scope on that stack shares one runtime context.**
+Each loaded module has its own stack — a native module is compiled with its own copy of this library,
+so even the AOT native host and the CoreCLR managed host that share an env are separate modules whose
+stacks never mix — and there is one context per environment per module. So a thread running one
+module's code always sees exactly one context: a nested runtime-context scope inherits its parent's
+context, and creating one for a *different* context throws. Callback dispatch depends on this,
+inheriting the current scope's context (or `FromEnv` when no scope is open) rather than reconciling
+several.
+
 ## Lifetime of `napi_value` and `napi_ref` (`JSValue` / `JSReference`)
 
 - A `napi_value` (wrapped by [`JSValue`](../features/js-value-scopes)) is valid **only within its
