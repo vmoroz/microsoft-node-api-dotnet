@@ -361,8 +361,6 @@ public sealed class JSValueScope : IDisposable
                 "A value scope cannot be disposed while a scope created within it is still open.");
         }
 
-        IsDisposed = true;
-
         switch (ScopeType)
         {
             // Fetch the env only where it is used, so disposing a runtime scope after its context
@@ -382,6 +380,7 @@ public sealed class JSValueScope : IDisposable
                 break;
         }
 
+        IsDisposed = true;
         CurrentOrNull = _parentScope;
 
         // Carry a deferred context-disposal request (see DisposeRuntimeContextWhenIdle) out to the

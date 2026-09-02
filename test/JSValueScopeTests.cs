@@ -375,6 +375,54 @@ public class JSValueScopeTests
         }).Wait();
     }
 
+    private sealed class ThrowOnceOnScopeCloseRuntime : MockJSRuntime
+    {
+        private bool _throwOnClose = true;
+
+        private void ThrowOnce()
+        {
+            if (_throwOnClose)
+            {
+                _throwOnClose = false;
+                throw new InvalidOperationException("scope close failure");
+            }
+        }
+
+        public override napi_status CloseHandleScope(
+            napi_env env, napi_handle_scope scope)
+        {
+            ThrowOnce();
+            return base.CloseHandleScope(env, scope);
+        }
+
+        public override napi_status CloseEscapableHandleScope(
+            napi_env env, napi_escapable_handle_scope scope)
+        {
+            ThrowOnce();
+            return base.CloseEscapableHandleScope(env, scope);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FailedScopeCloseCanBeRetried(bool escapable)
+    {
+        var runtime = new ThrowOnceOnScopeCloseRuntime();
+        using JSValueScope runtimeScope = TestRuntimeScope(runtime);
+        JSValueScope scope = escapable
+            ? JSValueScope.CreateEscapableScope()
+            : JSValueScope.CreateHandleScope();
+
+        Assert.Throws<InvalidOperationException>(() => scope.Dispose());
+        Assert.False(scope.IsDisposed);
+        Assert.Same(scope, JSValueScope.Current);
+
+        scope.Dispose();
+        Assert.True(scope.IsDisposed);
+        Assert.Same(runtimeScope, JSValueScope.Current);
+    }
+
     [Fact]
     public void DisposeRuntimeContextWhenIdleDefersUntilOutermostScopeCloses()
     {

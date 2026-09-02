@@ -376,11 +376,13 @@ internal sealed unsafe class JSTsfnSynchronizationContext : JSSynchronizationCon
             using TsfnCallGate.Guard? guard = _callGate.TryEnter();
             if (guard is null) return;
 
-            _tsfn.NonBlockingCall(() =>
+            bool isQueued = _tsfn.NonBlockingCall(() =>
             {
                 callback(state);
                 syncEvent.Set();
             });
+
+            if (!isQueued) return;
         }
 
         // Do not hold the gate while waiting for a callback on the JS thread.
