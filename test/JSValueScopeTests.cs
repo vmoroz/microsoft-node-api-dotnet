@@ -413,6 +413,35 @@ public class JSValueScopeTests
     }
 
     [Fact]
+    public void DisposeRuntimeContextWhenIdleDisposesRequestedContextUnderForeignNesting()
+    {
+        napi_env env = new(Environment.CurrentManagedThreadId);
+
+        // Separate runtimes so each context owns its own instance data, letting a scope for one be
+        // nested under a scope for the other (as TryCreateRuntimeScope allows across environments).
+        var contextA = new JSRuntimeContext(
+            env, new MockJSRuntime(), new MockJSRuntime.SynchronizationContext());
+        var contextB = new JSRuntimeContext(
+            env, new MockJSRuntime(), new MockJSRuntime.SynchronizationContext());
+
+        using (JSValueScope.CreateRuntimeScope(env, contextA))
+        {
+            using (JSValueScope.CreateRuntimeScope(env, contextB))
+            {
+                // A scope for B is nested under a scope for A. The request must dispose B when B's
+                // scope closes, not propagate into A's scope and dispose A in its place.
+                JSValueScope.DisposeRuntimeContextWhenIdle(contextB);
+                Assert.False(contextB.IsDisposed);
+            }
+
+            Assert.True(contextB.IsDisposed);
+            Assert.False(contextA.IsDisposed);
+        }
+
+        contextA.Dispose();
+    }
+
+    [Fact]
     public void RegisteringSecondContextOnEnvIsRejected()
     {
         napi_env env = new(Environment.CurrentManagedThreadId);
