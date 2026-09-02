@@ -83,9 +83,10 @@ public sealed class HermesRuntime : IDisposable
     {
         if (IsDisposed) return;
         VerifyElseThrow(JSDispatcherQueue.GetForCurrentThread() == _dispatcherQueue);
-        IsDisposed = true;
+        // Mark disposal only after both closes succeed so a throwing root-scope close stays retryable.
         _rootScope.Dispose();
         hermes_delete_runtime(_runtime).ThrowIfFailed();
+        IsDisposed = true;
     }
 
     public static explicit operator hermes_runtime(HermesRuntime value) => value._runtime;

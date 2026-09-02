@@ -271,8 +271,17 @@ public sealed class ManagedHost : JSEventEmitter, IDisposable
             finally
             {
                 // The module-slot context does not own the instance-data finalizer, so a failed init
-                // must dispose it here; tolerate construction not having completed.
-                context?.Dispose();
+                // must dispose it here; tolerate construction not having completed. Swallow a teardown
+                // failure -- JSRuntimeContext.Dispose rethrows its first cleanup error, which must not
+                // escape this UnmanagedCallersOnly entry point.
+                try
+                {
+                    context?.Dispose();
+                }
+                catch (Exception disposeError)
+                {
+                    Trace($"Failed to dispose context after failed module init: {disposeError}");
+                }
             }
         }
 

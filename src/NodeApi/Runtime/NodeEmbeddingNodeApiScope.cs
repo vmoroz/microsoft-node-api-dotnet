@@ -45,11 +45,14 @@ public sealed class NodeEmbeddingNodeApiScope : IDisposable
     public void Dispose()
     {
         if (IsDisposed) return;
-        IsDisposed = true;
 
+        // Mark disposal only after both closes succeed: the value scope's LIFO/thread check can throw
+        // if a nested scope is still open, and marking first would leave that unretryable and leak the
+        // native Node-API scope.
         _valueScope.Dispose();
         NodeEmbedding.JSRuntime.EmbeddingRuntimeCloseNodeApiScope(
             _runtime.Handle, _nodeApiScope)
             .ThrowIfFailed();
+        IsDisposed = true;
     }
 }

@@ -314,8 +314,6 @@ public sealed class JSRuntimeContext : IDisposable
     /// </summary>
     private unsafe void RegisterInstanceData(napi_env env, JSRuntime runtime)
     {
-        s_instanceDataRuntime = runtime;
-
         runtime.GetInstanceData(env, out nint instanceData).ThrowIfFailed();
         if (instanceData == default)
         {
@@ -349,6 +347,11 @@ public sealed class JSRuntimeContext : IDisposable
         }
 
         ((nint*)instanceData)[s_instanceDataSlot] = ContextHandle;
+
+        // Publish the process-wide runtime that FromEnv uses only after registration succeeds, so a
+        // failed GetInstanceData/SetInstanceData or a rejected duplicate slot can't repoint FromEnv at
+        // a runtime that never registered a context on this env.
+        s_instanceDataRuntime = runtime;
     }
 
 #if !UNMANAGED_DELEGATES
