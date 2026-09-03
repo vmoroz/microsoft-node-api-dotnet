@@ -615,6 +615,13 @@ public class JSValueScopeTests
         Assert.Same(context, JSRuntimeContext.Current);
     }
 
+    [Fact]
+    public void RuntimeContextDisposalIsInfrastructureOnly()
+    {
+        Assert.False(typeof(IDisposable).IsAssignableFrom(typeof(JSRuntimeContext)));
+        Assert.Null(typeof(JSRuntimeContext).GetMethod(nameof(IDisposable.Dispose)));
+    }
+
     // A runtime-context scope installs the context's synchronization context as the thread's current
     // one for its lifetime (so await continuations marshal back to the JS thread) and restores the
     // previously-current one when disposed.

@@ -23,12 +23,12 @@ namespace Microsoft.JavaScript.NodeApi.Interop;
 /// </summary>
 /// <remarks>
 /// A <see cref="JSRuntimeContext"/> instance is constructed when the .NET Node API managed host is
-/// loaded, and disposed when the host is unloaded. (For AOT there is no "host" component, so each
-/// AOT module has a context that matches the module lifetime.) The context tracks several kinds
-/// of JS references used internally by this assembly, so that the references can be re-used for
-/// the lifetime of the host and disposed when the context is disposed.
+/// loaded, and the hosting infrastructure tears it down when the host is unloaded. (For AOT there
+/// is no "host" component, so each AOT module has a context that matches the module lifetime.) The
+/// context tracks several kinds of JS references used internally by this assembly, so that the
+/// references can be re-used for the lifetime of the host and released during context teardown.
 /// </remarks>
-public sealed class JSRuntimeContext : IDisposable
+public sealed class JSRuntimeContext
 {
     /// <summary>
     /// Name of a global object that may hold context specific to Node API .NET.
@@ -1003,7 +1003,7 @@ public sealed class JSRuntimeContext : IDisposable
         _moduleDisposables.Add(disposable);
     }
 
-    public void Dispose()
+    internal void Dispose()
     {
         if (IsDisposed) return;
 
